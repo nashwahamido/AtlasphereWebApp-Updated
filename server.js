@@ -109,9 +109,9 @@ try {
 app.use(session(sessionConfig));
 
 // ── EMAIL SETUP ──────────────────────────────────────────────────────────
-// Uses Mailjet transactional HTTP API (port 443) — bypasses Railway SMTP port
+// Uses Brevo transactional HTTP API (port 443) — bypasses Railway SMTP port
 // blocking. See config/mailer.js for configuration.
-console.log("Email: using Mailjet HTTP API");
+console.log("Email: using Brevo HTTP API");
 
 // ── HELPERS ──────────────────────────────────────────────────────────────
 function generateCode() {
