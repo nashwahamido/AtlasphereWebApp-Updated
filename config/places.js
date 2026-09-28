@@ -61,12 +61,12 @@ function buildPhotoUrl(photos) {
 }
 
 async function fetchPlaces(city) {
-  var apiKey = process.env.FOURSQUARE_API_KEY;
+  var apiKey = (process.env.FOURSQUARE_API_KEY || "").trim();
   if (!apiKey) {
     console.error("Foursquare not configured — set FOURSQUARE_API_KEY.");
     return [];
   }
-  var version = process.env.FOURSQUARE_API_VERSION || DEFAULT_API_VERSION;
+  var version = (process.env.FOURSQUARE_API_VERSION || "").trim() || DEFAULT_API_VERSION;
 
   var response = await axios.get(FSQ_ENDPOINT, {
     params: {

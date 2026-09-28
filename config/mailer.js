@@ -24,7 +24,7 @@ function parseSender() {
 // callers already handle a false return gracefully (verification codes are
 // also logged to the server console as a fallback).
 async function sendEmail({ to, subject, html }) {
-  const apiKey = process.env.BREVO_API_KEY;
+  const apiKey = (process.env.BREVO_API_KEY || "").trim();
   const sender = parseSender();
 
   if (!apiKey || !sender.email) {
