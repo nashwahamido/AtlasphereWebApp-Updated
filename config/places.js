@@ -116,6 +116,11 @@ async function attachWikipediaImages(items) {
         titles: named.map(function (i) { return i.name; }).join("|"),
         redirects: 1,
       },
+      // Wikimedia rejects requests without a descriptive User-Agent (HTTP 403).
+      headers: {
+        "User-Agent": "AtlasphereTravelApp/1.0 (https://github.com/nashwahamido/AtlasphereWebApp-Updated; atlasphere.app@gmail.com)",
+        "Accept": "application/json",
+      },
       timeout: 6000,
     });
 
