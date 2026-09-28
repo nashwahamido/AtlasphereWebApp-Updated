@@ -10,6 +10,7 @@ const fs = require("fs");
 const axios = require("axios");
 const sharp = require("sharp");
 const { sendEmail } = require("./config/mailer");
+const { getRecommendations } = require("./config/places");
 
 
 // ── Validation Rules ────────────────────────────────────────────────────
@@ -951,67 +952,9 @@ app.use("/users", require("./routes/users"));
 
 // ── API Route ────────────────────────────────────────────────
 
-//tracks al unique categories and subcategories from the API
-var allCategories = new Set();
-var allSubcategories = new Set();
-
-//set Travel Advisor subcategory names to our own activity tag labels
-var SUBCATEGORY_TO_TAGS = {
-  "Sights & Landmarks": ["Sightseeing", "Culture"],
-  "Museums": ["Culture"],
-  "Concerts & Shows": ["Entertainment", "Nightlife"],
-  "Events": ["Entertainment", "Fun"],
-  "Food & Drink": ["Food", "Nightlife"],
-  "Nature & Parks": ["Nature", "Relax"],
-  "Outdoor Activities": ["Active", "Fun"],
-  "Water & Amusement Parks": ["Fun", "Family", "Active"],
-  "Zoos & Aquariums": ["Family", "Nature"],
-  "Shopping": ["Shopping"],
-  "Traveler Resources": ["Sightseeing"],
-  "Other": ["Sightseeing"]
-};
-//converts API subcategories into our own tag format
-function inferTagsFromApi(item) {
-  var tags = [];
-
-  if (Array.isArray(item.subcategory)) {
-    item.subcategory.forEach(function(sub) {
-      var name = sub && sub.name ? sub.name : "";
-      var mapped = SUBCATEGORY_TO_TAGS[name] || [];
-
-      mapped.forEach(function(tag) {
-        if (tags.indexOf(tag) === -1) {
-          tags.push(tag);
-        }
-      });
-    });
-  }
-
-  //will default to sightseeing if tag cant be matched
-  if (tags.length === 0) {
-    tags.push("Sightseeing");
-  }
-
-  return tags;
-}
-
-function scoreAttraction(item, preferences) {
-  var prefList = preferences || [];
-  var matched = 0;
-  var itemTags = item.tags || [];
-
-  prefList.forEach(function(pref) {
-    if (itemTags.indexOf(pref) !== -1) {
-      matched += 1;
-    }
-  });
-
-  return matched;
-}
-
+// Attraction recommendations come from Foursquare Places — see config/places.js.
 app.get("/api/recommendations", requireAuth, async (req, res) => {
   var city = req.query.city || "Rome";
-  console.log("Requested city:", city);
 
   var preferences = req.query.activities
     ? req.query.activities.split(",").map(function(s) {
@@ -1019,128 +962,15 @@ app.get("/api/recommendations", requireAuth, async (req, res) => {
       }).filter(Boolean)
     : [];
 
+  console.log("Recommendations request:", { city: city, preferences: preferences });
+
   try {
-    // Step 1: search location
-    var locationResponse = await axios.get(
-      "https://travel-advisor.p.rapidapi.com/locations/search",
-      {
-        params: {
-          query: city,
-          limit: "50",
-          offset: "0",
-          location_id: "1",
-          sort: "relevance",
-          lang: "en_US"
-        },
-        headers: {
-          "X-RapidAPI-Key": process.env.RAPIDAPI_KEY,
-          "X-RapidAPI-Host": process.env.RAPIDAPI_HOST
-        }
-      }
-    );
-
-    var locationData = locationResponse.data && locationResponse.data.data
-      ? locationResponse.data.data
-      : [];
-
-      // finds the first result that is a location that sin't a hotel or restaurant
-    var geoResult = locationData.find(function(item) {
-      return item.result_type === "geos";
-    });
-
-    if (!geoResult || !geoResult.result_object || !geoResult.result_object.location_id) {
-      console.log("No valid location found for:", city);
-      return res.json([]);
-    }
-
-    var locationId = geoResult.result_object.location_id;
-
-    // Step 2: get attractions for that location
-    var attractionsResponse = await axios.get(
-      "https://travel-advisor.p.rapidapi.com/attractions/list",
-      {
-        params: {
-          location_id: locationId,
-          lang: "en_US",
-          sort: "recommended"
-        },
-        headers: {
-          "X-RapidAPI-Key": process.env.RAPIDAPI_KEY,
-          "X-RapidAPI-Host": process.env.RAPIDAPI_HOST
-        }
-      }
-    );
-
-    var attractionData = attractionsResponse.data && attractionsResponse.data.data
-      ? attractionsResponse.data.data
-      : [];
-
-    attractionData.forEach(function(item) {
-      if (item.category && item.category.name) {
-        allCategories.add(item.category.name);
-      }
-
-      if (Array.isArray(item.subcategory)) {
-        item.subcategory.forEach(function(sub) {
-          if (sub && sub.name) {
-            allSubcategories.add(sub.name);
-          }
-        });
-      }
-    });
-
-    console.log("ALL CATEGORIES:", Array.from(allCategories).sort());
-    console.log("ALL SUBCATEGORIES:", Array.from(allSubcategories).sort());
-
-    var normalized = attractionData
-      .filter(function(item) {
-        return item && item.name;
-      })
-      .map(function(item, index) {
-        var image =
-          item.photo &&
-          item.photo.images &&
-          item.photo.images.large &&
-          item.photo.images.large.url
-            ? item.photo.images.large.url
-            : "/images/fallback.jpg";
-
-        var tags = inferTagsFromApi(item);
-
-        return {
-          id: item.location_id || index + 1,
-          name: item.name,
-          tags: tags,
-          description:
-            item.description ||
-            item.ranking ||
-            "A popular attraction worth exploring during your trip.",
-          image: image,
-          rating: item.rating || null,
-          location: city
-        };
-      });
-
-      // sorts by how closely each attraction matches the user's preferences from activity page
-    var sorted = normalized
-      .map(function(item) {
-        return {
-          item: item,
-          score: scoreAttraction(item, preferences)
-        };
-      })
-      .sort(function(a, b) {
-        return b.score - a.score;
-      })
-      .map(function(entry) {
-        return entry.item;
-      });
-
-    res.json(sorted.slice(0, 50));
+    var results = await getRecommendations(city, preferences);
+    res.json(results.slice(0, 50));
   } catch (error) {
     console.error(
-      "Travel Advisor API error:",
-      error.response ? error.response.data : error.message
+      "Foursquare API error:",
+      error.response ? JSON.stringify(error.response.data) : error.message
     );
     res.status(500).json({ error: "Failed to fetch recommendations." });
   }
