@@ -1,48 +1,61 @@
-// ── PLACES (OpenTripMap API) ──────────────────────────────────────────────
-// Attraction/points-of-interest recommendations for a city. Free, no credit
-// card (get a key at https://opentripmap.io/product). Sends over HTTPS
-// (port 443) so it works on Railway. Configure via env:
-//   OPENTRIPMAP_API_KEY — API key from your OpenTripMap account
+// ── PLACES (Geoapify Places API) ──────────────────────────────────────────
+// Attraction/points-of-interest recommendations for a city. Free (3,000
+// req/day), no credit card — get a key at https://myprojects.geoapify.com.
+// Sends over HTTPS (port 443) so it works on Railway. Configure via env:
+//   GEOAPIFY_API_KEY — API key from your Geoapify project
 //
-// Two calls: geocode the city (/geoname), then list nearby attractions
-// (/radius). Card images come from the app's bundled per-category images
-// (public/images/<tag>.jpg), so we don't need any paid photo field.
+// Two calls: geocode the city, then list nearby places by category. Card
+// images come from the app's bundled per-category images (public/images/
+// <tag>.jpg), so we don't need any paid photo field.
 const axios = require("axios");
 
-const OTM_BASE = "https://api.opentripmap.com/0.1/en/places";
-// Broad enough to cover all 11 activity tags: interesting_places already spans
-// cultural/historic/natural/architecture/amusements, plus foods and shops.
-const KINDS = "interesting_places,foods,shops";
+const GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search";
+const PLACES_URL = "https://api.geoapify.com/v2/places";
+
+// Geoapify category codes broad enough to cover the 11 activity tags.
+const CATEGORIES = [
+  "tourism.sights",
+  "tourism.attraction",
+  "entertainment",
+  "leisure.park",
+  "natural",
+  "catering",
+  "commercial.shopping_mall",
+  "commercial.marketplace",
+  "sport",
+].join(",");
+
 const SEARCH_RADIUS_M = 6000;
-const MIN_RATE = 2; // filter out trivial POIs (OpenTripMap importance 1–3)
+const LIMIT = 50;
 
 // The app's 11 activity tags (see client/src/components/activities.jsx). Each
 // has a bundled image at public/images/<lowercase-tag>.jpg.
 const KNOWN_TAGS = ["Relax", "Nightlife", "Active", "Culture", "Nature", "Food", "Shopping", "Entertainment", "Family", "Fun", "Sightseeing"];
 
-// OpenTripMap "kinds" tokens are matched to the app's tags by keyword.
+// Geoapify category strings are matched to the app's tags by keyword.
 const TAG_RULES = [
-  { tags: ["Culture", "Sightseeing"], match: ["museum", "historic", "monument", "memorial", "castle", "fort", "palace", "archaeolog", "ruins", "tomb", "heritage", "cultural"] },
-  { tags: ["Culture", "Sightseeing"], match: ["church", "cathedral", "temple", "mosque", "synagogue", "monaster", "shrine", "religion"] },
-  { tags: ["Sightseeing"], match: ["architecture", "view_point", "tower", "bridge", "squares", "fountain", "skyscraper", "lighthouse"] },
-  { tags: ["Entertainment", "Culture"], match: ["theatre", "cinema", "concert", "opera", "entertainment"] },
-  { tags: ["Fun", "Family", "Active"], match: ["amusement", "theme_park", "water_park", "attraction_park"] },
+  { tags: ["Culture", "Sightseeing"], match: ["museum", "monument", "memorial", "castle", "ruines", "archaeological", "heritage", "fort", "city_gate", "battlefield", "tower"] },
+  { tags: ["Culture", "Sightseeing"], match: ["place_of_worship", "religion", "church", "cathedral", "mosque", "temple", "synagogue"] },
+  { tags: ["Culture"], match: ["gallery", "arts_centre", "culture"] },
+  { tags: ["Sightseeing"], match: ["tourism.sights", "attraction", "viewpoint", "artwork", "fountain"] },
+  { tags: ["Entertainment", "Culture"], match: ["theatre", "cinema", "concert"] },
+  { tags: ["Fun", "Family", "Active"], match: ["theme_park", "amusement", "water_park"] },
   { tags: ["Family", "Nature"], match: ["zoo", "aquarium"] },
-  { tags: ["Nature", "Relax"], match: ["natural", "nature", "beach", "park", "garden", "water", "lake", "river", "waterfall", "mountain", "forest", "island", "geological", "wood", "spring"] },
+  { tags: ["Nature", "Relax"], match: ["park", "garden", "natural", "beach", "forest", "water", "nature_reserve", "national_park"] },
   { tags: ["Nightlife", "Fun"], match: ["casino"] },
-  { tags: ["Nightlife", "Food"], match: ["bar", "pub", "nightclub", "brewery"] },
-  { tags: ["Food"], match: ["foods", "restaurant", "cafe", "bakery", "food"] },
-  { tags: ["Shopping"], match: ["shop", "mall", "market", "store", "boutique"] },
-  { tags: ["Active"], match: ["sport", "stadium", "climb", "dive", "surf", "golf", "ski"] },
-  { tags: ["Relax"], match: ["spa", "resort", "wellness", "hot_spring"] },
+  { tags: ["Nightlife", "Food"], match: ["nightclub", "bar", "pub", "biergarten"] },
+  { tags: ["Food"], match: ["restaurant", "cafe", "fast_food", "food_court", "catering"] },
+  { tags: ["Shopping"], match: ["shopping", "mall", "marketplace", "supermarket", "department_store", "commercial"] },
+  { tags: ["Active"], match: ["stadium", "sport", "fitness", "pitch"] },
+  { tags: ["Relax"], match: ["spa", "sauna", "wellness"] },
 ];
 
-// Map a place's OpenTripMap "kinds" string to the app's activity tags.
-function inferTags(kindsStr) {
-  var kinds = (kindsStr || "").toLowerCase();
+// Map a place's Geoapify categories to the app's activity tags.
+function inferTags(categories) {
+  var joined = (Array.isArray(categories) ? categories.join(",") : "").toLowerCase();
   var tags = [];
   TAG_RULES.forEach(function (rule) {
-    var hit = rule.match.some(function (kw) { return kinds.indexOf(kw) !== -1; });
+    var hit = rule.match.some(function (kw) { return joined.indexOf(kw) !== -1; });
     if (hit) {
       rule.tags.forEach(function (t) { if (tags.indexOf(t) === -1) tags.push(t); });
     }
@@ -58,73 +71,79 @@ function imageForTags(tags) {
   return "/images/" + primary.toLowerCase() + ".jpg";
 }
 
-// Turn "historic,architecture,church" into a readable "Historic".
-function humanizeKind(kindsStr) {
-  var first = (kindsStr || "").split(",")[0].trim();
-  if (!first) return "A popular spot worth exploring during your trip.";
-  return first.split("_").map(function (w) {
+// Turn the most specific category (e.g. "tourism.sights.memorial") into a
+// readable label ("Memorial").
+function describe(categories) {
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return "A popular spot worth exploring during your trip.";
+  }
+  var mostSpecific = categories.slice().sort(function (a, b) {
+    return b.split(".").length - a.split(".").length;
+  })[0];
+  var leaf = mostSpecific.split(".").pop() || "";
+  if (!leaf) return "A popular spot worth exploring during your trip.";
+  return leaf.split("_").map(function (w) {
     return w.charAt(0).toUpperCase() + w.slice(1);
   }).join(" ");
 }
 
 async function fetchPlaces(city) {
-  var apiKey = (process.env.OPENTRIPMAP_API_KEY || "").trim();
+  var apiKey = (process.env.GEOAPIFY_API_KEY || "").trim();
   if (!apiKey) {
-    console.error("OpenTripMap not configured — set OPENTRIPMAP_API_KEY.");
+    console.error("Geoapify not configured — set GEOAPIFY_API_KEY.");
     return [];
   }
 
   // 1. Geocode the city name to coordinates.
-  var geo = await axios.get(OTM_BASE + "/geoname", {
-    params: { name: city, apikey: apiKey },
+  var geo = await axios.get(GEOCODE_URL, {
+    params: { text: city, format: "json", limit: 1, apiKey: apiKey },
   });
-  if (!geo.data || typeof geo.data.lat !== "number" || typeof geo.data.lon !== "number") {
-    console.log("OpenTripMap: no location found for:", city);
+  var place = geo.data && Array.isArray(geo.data.results) ? geo.data.results[0] : null;
+  if (!place || typeof place.lat !== "number" || typeof place.lon !== "number") {
+    console.log("Geoapify: no location found for:", city);
     return [];
   }
 
-  // 2. List nearby attractions.
-  var radiusRes = await axios.get(OTM_BASE + "/radius", {
+  // 2. List nearby places by category (lon,lat order for Geoapify).
+  var places = await axios.get(PLACES_URL, {
     params: {
-      radius: SEARCH_RADIUS_M,
-      lon: geo.data.lon,
-      lat: geo.data.lat,
-      kinds: KINDS,
-      rate: MIN_RATE,
-      format: "json",
-      limit: 50,
-      apikey: apiKey,
+      categories: CATEGORIES,
+      filter: "circle:" + place.lon + "," + place.lat + "," + SEARCH_RADIUS_M,
+      bias: "proximity:" + place.lon + "," + place.lat,
+      limit: LIMIT,
+      apiKey: apiKey,
     },
   });
 
-  return Array.isArray(radiusRes.data) ? radiusRes.data : [];
+  return (places.data && Array.isArray(places.data.features)) ? places.data.features : [];
 }
 
 // Returns the shape the frontend already expects:
 // { id, name, tags, description, image, rating, location }, re-ranked so the
 // places matching the user's selected activity tags come first.
 async function getRecommendations(city, preferences) {
-  var places = await fetchPlaces(city);
+  var features = await fetchPlaces(city);
   var prefList = preferences || [];
   var seenNames = {};
 
-  var normalized = places
-    .filter(function (item) { return item && item.name && item.name.trim(); })
-    .filter(function (item) {
-      var key = item.name.trim().toLowerCase();
+  var normalized = features
+    .map(function (f) { return f && f.properties ? f.properties : null; })
+    .filter(function (p) { return p && p.name && String(p.name).trim(); })
+    .filter(function (p) {
+      var key = String(p.name).trim().toLowerCase();
       if (seenNames[key]) return false;
       seenNames[key] = true;
       return true;
     })
-    .map(function (item, index) {
-      var tags = inferTags(item.kinds);
+    .map(function (p, index) {
+      var tags = inferTags(p.categories);
       return {
-        id: item.xid || ("otm-" + index),
-        name: item.name,
+        id: p.place_id || ("geoapify-" + index),
+        name: p.name,
         tags: tags,
-        description: humanizeKind(item.kinds),
+        description: describe(p.categories),
         image: imageForTags(tags),
-        rating: (typeof item.rate === "number") ? item.rate : null,
+        rating: null, // Geoapify does not provide user ratings
         location: city,
       };
     });
