@@ -1499,6 +1499,23 @@ server.listen(PORT, '0.0.0.0', function() {
       else { console.log("Added resetTokenExpires column to tbl_users"); }
     }
   );
+
+  // Auto-migrate: widen vote columns so long place IDs (Geoapify) and photo
+  // URLs (Pexels) fit — otherwise inserts fail with "Data too long".
+  connection.query(
+    "ALTER TABLE tbl_activity_votes MODIFY activityId VARCHAR(255) NOT NULL",
+    function(err) {
+      if (err) { console.error("Migration note (activityId widen):", err.message); }
+      else { console.log("Widened tbl_activity_votes.activityId to VARCHAR(255)"); }
+    }
+  );
+  connection.query(
+    "ALTER TABLE tbl_activity_votes MODIFY activityImage VARCHAR(1024)",
+    function(err) {
+      if (err) { console.error("Migration note (activityImage widen):", err.message); }
+      else { console.log("Widened tbl_activity_votes.activityImage to VARCHAR(1024)"); }
+    }
+  );
 });
 
 module.exports = app;
