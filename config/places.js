@@ -1,23 +1,18 @@
-// ── PLACES (Geoapify Places API) ──────────────────────────────────────────
-// Attraction/points-of-interest recommendations for a city. Free (3,000
-// req/day), no credit card — get a key at https://myprojects.geoapify.com.
-// Sends over HTTPS (port 443) so it works on Railway. Configure via env:
-//   GEOAPIFY_API_KEY — API key from your Geoapify project
+// ── PLACES (Geoapify Places API + Pexels photos) ─────────────────────────
+// Attraction/points-of-interest recommendations for a city. Two providers,
+// both free, over HTTPS (Railway-friendly). Configure via env:
+//   GEOAPIFY_API_KEY — place data      (https://myprojects.geoapify.com)
+//   PEXELS_API_KEY   — card photos     (https://www.pexels.com/api/)
 //
-// Two calls: geocode the city, then list nearby places by category. Card
-// images come from Wikipedia when a place matches an article, otherwise the
-// app's bundled per-category images (public/images/<tag>.jpg).
+// Geoapify gives the places; Pexels gives an attractive, on-city photo for
+// each ("{name} {city}"), falling back to a pool of destination-city photos so
+// a card is never the wrong city. If Pexels is unset, bundled category images
+// (public/images/<tag>.jpg) are used.
 const axios = require("axios");
 
 const GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search";
 const PLACES_URL = "https://api.geoapify.com/v2/places";
-// Wikipedia gives us free real photos for well-known places (batched, no key).
-const WIKI_URL = "https://en.wikipedia.org/w/api.php";
-// Wikimedia rejects requests without a descriptive User-Agent (HTTP 403).
-const WIKI_HEADERS = {
-  "User-Agent": "AtlasphereTravelApp/1.0 (https://github.com/nashwahamido/AtlasphereWebApp-Updated; atlasphere.app@gmail.com)",
-  "Accept": "application/json",
-};
+const PEXELS_URL = "https://api.pexels.com/v1/search";
 
 // Geoapify category codes broad enough to cover the 11 activity tags.
 const CATEGORIES = [
@@ -34,9 +29,12 @@ const CATEGORIES = [
 
 const SEARCH_RADIUS_M = 6000;
 const LIMIT = 50;
+// How many places get their own per-place Pexels lookup (keeps us well under
+// Pexels' free rate limit); the rest use the varied city-photo pool.
+const PHOTO_LOOKUP_CAP = 20;
 
 // The app's 11 activity tags (see client/src/components/activities.jsx). Each
-// has a bundled image at public/images/<lowercase-tag>.jpg.
+// has a bundled image at public/images/<lowercase-tag>.jpg (last-resort image).
 const KNOWN_TAGS = ["Relax", "Nightlife", "Active", "Culture", "Nature", "Food", "Shopping", "Entertainment", "Family", "Fun", "Sightseeing"];
 
 // Geoapify category strings are matched to the app's tags by keyword.
@@ -71,7 +69,8 @@ function inferTags(categories) {
   return tags;
 }
 
-// Pick a bundled card image based on the place's primary tag.
+// Last-resort bundled image based on the place's primary tag (used only when
+// Pexels is unconfigured or returns nothing at all).
 function imageForTags(tags) {
   var primary = (tags && tags[0]) ? tags[0] : "Sightseeing";
   if (KNOWN_TAGS.indexOf(primary) === -1) primary = "Sightseeing";
@@ -102,110 +101,65 @@ function looksLikeCode(name) {
   return false;
 }
 
-function usesCategoryImage(item) {
-  return item.image && item.image.indexOf("/images/") === 0;
+// ── Pexels photos ──────────────────────────────────────────────────────
+function pickSrc(photo) {
+  if (!photo || !photo.src) return null;
+  return photo.src.large || photo.src.landscape || photo.src.medium || photo.src.original || null;
 }
 
-// Guard against wildly wrong fuzzy matches: the article title must share a
-// meaningful word (>= 4 chars, either direction) with the place name.
-function titlesRelated(name, title) {
-  var toks = function (s) {
-    return String(s).toLowerCase().split(/[^a-z0-9]+/).filter(function (t) { return t.length >= 4; });
-  };
-  var a = toks(name), b = toks(title);
-  return a.some(function (t) {
-    return b.some(function (u) { return u === t || u.indexOf(t) !== -1 || t.indexOf(u) !== -1; });
+async function pexelsSearch(query, perPage) {
+  var apiKey = (process.env.PEXELS_API_KEY || "").trim();
+  try {
+    var res = await axios.get(PEXELS_URL, {
+      params: { query: query, per_page: perPage || 1, orientation: "landscape" },
+      headers: { Authorization: apiKey },
+      timeout: 6000,
+    });
+    return (res.data && Array.isArray(res.data.photos)) ? res.data.photos : [];
+  } catch (e) {
+    console.error("Pexels search failed for '" + query + "':", e.message);
+    return [];
+  }
+}
+
+// Small deterministic hash so the same place always gets the same city-pool
+// photo (stable across reloads) while different places get different ones.
+function hashString(s) {
+  var h = 0;
+  s = String(s);
+  for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+// Give every card an attractive, on-city photo. Matched places get their own
+// photo; the rest get a varied photo of the destination city itself.
+async function attachPexelsImages(items, city) {
+  var apiKey = (process.env.PEXELS_API_KEY || "").trim();
+  if (!apiKey) {
+    console.error("Pexels not configured — set PEXELS_API_KEY (using category images).");
+    return items;
+  }
+
+  // Pool of destination-city photos for fallback variety.
+  var cityPhotos = (await pexelsSearch(city, 15)).map(pickSrc).filter(Boolean);
+  function cityFallback(seed) {
+    if (cityPhotos.length === 0) return null;
+    return cityPhotos[hashString(seed) % cityPhotos.length];
+  }
+
+  // Per-place lookups for the first N places (parallel, capped).
+  var head = items.slice(0, PHOTO_LOOKUP_CAP);
+  await Promise.all(head.map(async function (item) {
+    var photos = await pexelsSearch(item.name + " " + city, 1);
+    var src = photos.length ? pickSrc(photos[0]) : null;
+    item.image = src || cityFallback(item.id) || item.image;
+  }));
+
+  // Everything else: a varied city photo (keep category image if no pool).
+  items.slice(PHOTO_LOOKUP_CAP).forEach(function (item) {
+    var src = cityFallback(item.id);
+    if (src) item.image = src;
   });
-}
-
-// Fuzzy fallback: search Wikipedia for one place name and return the top
-// result's thumbnail, but only if the result's title is plausibly related.
-async function wikiSearchImage(name) {
-  try {
-    var res = await axios.get(WIKI_URL, {
-      params: {
-        action: "query",
-        format: "json",
-        generator: "search",
-        gsrsearch: name,
-        gsrlimit: 1,
-        prop: "pageimages",
-        piprop: "thumbnail",
-        pithumbsize: 600,
-      },
-      headers: WIKI_HEADERS,
-      timeout: 6000,
-    });
-    var pages = (res.data && res.data.query && res.data.query.pages) ? res.data.query.pages : {};
-    var keys = Object.keys(pages);
-    if (keys.length === 0) return null;
-    var p = pages[keys[0]];
-    if (!p || !p.title || !p.thumbnail || !p.thumbnail.source) return null;
-    if (!titlesRelated(name, p.title)) return null;
-    return p.thumbnail.source;
-  } catch (e) {
-    return null;
-  }
-}
-
-// Best-effort: replace each item's category image with a real Wikipedia photo.
-// Pass 1 — one batched title lookup (fast, catches well-known places).
-// Pass 2 — a capped set of per-place fuzzy searches for whatever pass 1 missed.
-// Anything still unmatched keeps its bundled category image. Never throws.
-async function attachWikipediaImages(items) {
-  var named = items.filter(function (i) { return i.name; }).slice(0, 50);
-  if (named.length === 0) return items;
-
-  // ── Pass 1: batched exact-title lookup ──
-  try {
-    var res = await axios.get(WIKI_URL, {
-      params: {
-        action: "query",
-        format: "json",
-        prop: "pageimages",
-        piprop: "thumbnail",
-        pithumbsize: 600,
-        titles: named.map(function (i) { return i.name; }).join("|"),
-        redirects: 1,
-      },
-      headers: WIKI_HEADERS,
-      timeout: 6000,
-    });
-
-    var q = (res.data && res.data.query) ? res.data.query : {};
-    var pages = q.pages || {};
-
-    var thumbByTitle = {};
-    Object.keys(pages).forEach(function (k) {
-      var p = pages[k];
-      if (p && p.title && p.thumbnail && p.thumbnail.source) {
-        thumbByTitle[p.title.toLowerCase()] = p.thumbnail.source;
-      }
-    });
-
-    var alias = {};
-    (q.normalized || []).forEach(function (n) { alias[n.from.toLowerCase()] = n.to.toLowerCase(); });
-    (q.redirects || []).forEach(function (r) { alias[r.from.toLowerCase()] = r.to.toLowerCase(); });
-
-    items.forEach(function (item) {
-      var key = String(item.name).toLowerCase();
-      var resolved = alias[key] || key;
-      resolved = alias[resolved] || resolved;
-      var thumb = thumbByTitle[resolved];
-      if (thumb) item.image = thumb;
-    });
-  } catch (e) {
-    console.error("Wikipedia batch image lookup failed (using category images):", e.message);
-  }
-
-  // ── Pass 2: fuzzy per-place search for whatever still uses a category image ──
-  var unmatched = items.filter(usesCategoryImage).slice(0, 24);
-  if (unmatched.length > 0) {
-    await Promise.all(unmatched.map(async function (item) {
-      var img = await wikiSearchImage(item.name);
-      if (img) item.image = img;
-    }));
-  }
 
   return items;
 }
@@ -280,7 +234,7 @@ async function getRecommendations(city, preferences) {
     .sort(function (a, b) { return b.score - a.score; })
     .map(function (entry) { return entry.item; });
 
-  return attachWikipediaImages(ranked);
+  return attachPexelsImages(ranked, city);
 }
 
 module.exports = { getRecommendations, inferTags };
