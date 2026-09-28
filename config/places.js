@@ -1,92 +1,103 @@
-// ── PLACES (Foursquare Places API) ────────────────────────────────────────
-// Attraction/points-of-interest recommendations for a city. Sends over HTTPS
+// ── PLACES (OpenTripMap API) ──────────────────────────────────────────────
+// Attraction/points-of-interest recommendations for a city. Free, no credit
+// card (get a key at https://opentripmap.io/product). Sends over HTTPS
 // (port 443) so it works on Railway. Configure via env:
-//   FOURSQUARE_API_KEY      — Service key from your Foursquare developer account
-//   FOURSQUARE_API_VERSION  — optional API version date (default below)
+//   OPENTRIPMAP_API_KEY — API key from your OpenTripMap account
 //
-// NOTE: Foursquare's newer API is credit-based. Fields like photos, rating and
-// description are *Premium* and return HTTP 429 ("no API credits remaining") on
-// the free tier, so we request only free/core fields here and supply each card
-// image from the app's bundled per-category images (public/images/<tag>.jpg).
+// Two calls: geocode the city (/geoname), then list nearby attractions
+// (/radius). Card images come from the app's bundled per-category images
+// (public/images/<tag>.jpg), so we don't need any paid photo field.
 const axios = require("axios");
 
-const FSQ_ENDPOINT = "https://places-api.foursquare.com/places/search";
-const DEFAULT_API_VERSION = "2025-06-17";
-
-// Only free/core fields — do NOT add photos/rating/description (Premium).
-const FREE_FIELDS = "fsq_place_id,name,categories,location";
+const OTM_BASE = "https://api.opentripmap.com/0.1/en/places";
+// Broad enough to cover all 11 activity tags: interesting_places already spans
+// cultural/historic/natural/architecture/amusements, plus foods and shops.
+const KINDS = "interesting_places,foods,shops";
+const SEARCH_RADIUS_M = 6000;
+const MIN_RATE = 2; // filter out trivial POIs (OpenTripMap importance 1–3)
 
 // The app's 11 activity tags (see client/src/components/activities.jsx). Each
 // has a bundled image at public/images/<lowercase-tag>.jpg.
 const KNOWN_TAGS = ["Relax", "Nightlife", "Active", "Culture", "Nature", "Food", "Shopping", "Entertainment", "Family", "Fun", "Sightseeing"];
 
-// Foursquare category names are matched to the app's tags by keyword so the
-// mapping keeps working even when Foursquare tweaks its taxonomy.
+// OpenTripMap "kinds" tokens are matched to the app's tags by keyword.
 const TAG_RULES = [
-  { tags: ["Culture", "Sightseeing"], match: ["museum", "gallery", "historic", "monument", "landmark", "memorial", "castle", "palace", "ruin", "heritage", "cultural"] },
-  { tags: ["Culture", "Sightseeing"], match: ["church", "cathedral", "basilica", "temple", "mosque", "synagogue", "shrine", "chapel"] },
-  { tags: ["Nature", "Relax"], match: ["park", "garden", "beach", "nature", "trail", "mountain", "lake", "river", "waterfall", "forest", "island", "scenic", "lookout", "botanical"] },
-  { tags: ["Entertainment", "Culture"], match: ["theater", "theatre", "concert", "opera", "performing", "music venue", "cinema", "movie"] },
-  { tags: ["Fun", "Family", "Active"], match: ["amusement", "theme park", "water park", "arcade"] },
+  { tags: ["Culture", "Sightseeing"], match: ["museum", "historic", "monument", "memorial", "castle", "fort", "palace", "archaeolog", "ruins", "tomb", "heritage", "cultural"] },
+  { tags: ["Culture", "Sightseeing"], match: ["church", "cathedral", "temple", "mosque", "synagogue", "monaster", "shrine", "religion"] },
+  { tags: ["Sightseeing"], match: ["architecture", "view_point", "tower", "bridge", "squares", "fountain", "skyscraper", "lighthouse"] },
+  { tags: ["Entertainment", "Culture"], match: ["theatre", "cinema", "concert", "opera", "entertainment"] },
+  { tags: ["Fun", "Family", "Active"], match: ["amusement", "theme_park", "water_park", "attraction_park"] },
   { tags: ["Family", "Nature"], match: ["zoo", "aquarium"] },
-  { tags: ["Nightlife", "Food"], match: ["bar", "pub", "nightclub", "night club", "brewery", "cocktail", "wine"] },
-  { tags: ["Food"], match: ["restaurant", "café", "cafe", "coffee", "bakery", "food", "diner", "bistro", "eatery", "pizzeria", "pizza", "trattoria", "steakhouse", "gelato", "ice cream", "sushi", "dessert", "pastry"] },
-  { tags: ["Shopping"], match: ["shop", "mall", "market", "store", "boutique", "bazaar"] },
-  { tags: ["Active"], match: ["gym", "sport", "stadium", "climb", "fitness", "cycling", "surf", "dive"] },
-  { tags: ["Relax"], match: ["spa", "hot spring", "sauna", "wellness"] },
-  { tags: ["Entertainment", "Fun"], match: ["casino", "entertainment"] },
+  { tags: ["Nature", "Relax"], match: ["natural", "nature", "beach", "park", "garden", "water", "lake", "river", "waterfall", "mountain", "forest", "island", "geological", "wood", "spring"] },
+  { tags: ["Nightlife", "Fun"], match: ["casino"] },
+  { tags: ["Nightlife", "Food"], match: ["bar", "pub", "nightclub", "brewery"] },
+  { tags: ["Food"], match: ["foods", "restaurant", "cafe", "bakery", "food"] },
+  { tags: ["Shopping"], match: ["shop", "mall", "market", "store", "boutique"] },
+  { tags: ["Active"], match: ["sport", "stadium", "climb", "dive", "surf", "golf", "ski"] },
+  { tags: ["Relax"], match: ["spa", "resort", "wellness", "hot_spring"] },
 ];
 
-// Map a place's Foursquare categories to the app's activity tags.
-function inferTags(categories) {
-  var names = (categories || [])
-    .map(function (c) { return (c && c.name ? c.name : "").toLowerCase(); })
-    .filter(Boolean);
-
+// Map a place's OpenTripMap "kinds" string to the app's activity tags.
+function inferTags(kindsStr) {
+  var kinds = (kindsStr || "").toLowerCase();
   var tags = [];
-  names.forEach(function (name) {
-    TAG_RULES.forEach(function (rule) {
-      var hit = rule.match.some(function (kw) { return name.indexOf(kw) !== -1; });
-      if (hit) {
-        rule.tags.forEach(function (t) { if (tags.indexOf(t) === -1) tags.push(t); });
-      }
-    });
+  TAG_RULES.forEach(function (rule) {
+    var hit = rule.match.some(function (kw) { return kinds.indexOf(kw) !== -1; });
+    if (hit) {
+      rule.tags.forEach(function (t) { if (tags.indexOf(t) === -1) tags.push(t); });
+    }
   });
-
   if (tags.length === 0) tags.push("Sightseeing");
   return tags;
 }
 
-// Pick a bundled card image based on the place's primary tag (Premium photos
-// aren't available on the free tier).
+// Pick a bundled card image based on the place's primary tag.
 function imageForTags(tags) {
   var primary = (tags && tags[0]) ? tags[0] : "Sightseeing";
   if (KNOWN_TAGS.indexOf(primary) === -1) primary = "Sightseeing";
   return "/images/" + primary.toLowerCase() + ".jpg";
 }
 
+// Turn "historic,architecture,church" into a readable "Historic".
+function humanizeKind(kindsStr) {
+  var first = (kindsStr || "").split(",")[0].trim();
+  if (!first) return "A popular spot worth exploring during your trip.";
+  return first.split("_").map(function (w) {
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(" ");
+}
+
 async function fetchPlaces(city) {
-  var apiKey = (process.env.FOURSQUARE_API_KEY || "").trim();
+  var apiKey = (process.env.OPENTRIPMAP_API_KEY || "").trim();
   if (!apiKey) {
-    console.error("Foursquare not configured — set FOURSQUARE_API_KEY.");
+    console.error("OpenTripMap not configured — set OPENTRIPMAP_API_KEY.");
     return [];
   }
-  var version = (process.env.FOURSQUARE_API_VERSION || "").trim() || DEFAULT_API_VERSION;
 
-  var response = await axios.get(FSQ_ENDPOINT, {
+  // 1. Geocode the city name to coordinates.
+  var geo = await axios.get(OTM_BASE + "/geoname", {
+    params: { name: city, apikey: apiKey },
+  });
+  if (!geo.data || typeof geo.data.lat !== "number" || typeof geo.data.lon !== "number") {
+    console.log("OpenTripMap: no location found for:", city);
+    return [];
+  }
+
+  // 2. List nearby attractions.
+  var radiusRes = await axios.get(OTM_BASE + "/radius", {
     params: {
-      near: city,
+      radius: SEARCH_RADIUS_M,
+      lon: geo.data.lon,
+      lat: geo.data.lat,
+      kinds: KINDS,
+      rate: MIN_RATE,
+      format: "json",
       limit: 50,
-      fields: FREE_FIELDS,
-    },
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "X-Places-Api-Version": version,
-      accept: "application/json",
+      apikey: apiKey,
     },
   });
 
-  return (response.data && response.data.results) ? response.data.results : [];
+  return Array.isArray(radiusRes.data) ? radiusRes.data : [];
 }
 
 // Returns the shape the frontend already expects:
@@ -95,19 +106,25 @@ async function fetchPlaces(city) {
 async function getRecommendations(city, preferences) {
   var places = await fetchPlaces(city);
   var prefList = preferences || [];
+  var seenNames = {};
 
   var normalized = places
-    .filter(function (item) { return item && item.name; })
+    .filter(function (item) { return item && item.name && item.name.trim(); })
+    .filter(function (item) {
+      var key = item.name.trim().toLowerCase();
+      if (seenNames[key]) return false;
+      seenNames[key] = true;
+      return true;
+    })
     .map(function (item, index) {
-      var tags = inferTags(item.categories);
-      var firstCategory = item.categories && item.categories[0] && item.categories[0].name;
+      var tags = inferTags(item.kinds);
       return {
-        id: item.fsq_place_id || item.fsq_id || ("fsq-" + index),
+        id: item.xid || ("otm-" + index),
         name: item.name,
         tags: tags,
-        description: firstCategory || "A popular spot worth exploring during your trip.",
+        description: humanizeKind(item.kinds),
         image: imageForTags(tags),
-        rating: null, // Premium field on Foursquare's free tier
+        rating: (typeof item.rate === "number") ? item.rate : null,
         location: city,
       };
     });
