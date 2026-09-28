@@ -13,6 +13,11 @@ const GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search";
 const PLACES_URL = "https://api.geoapify.com/v2/places";
 // Wikipedia gives us free real photos for well-known places (batched, no key).
 const WIKI_URL = "https://en.wikipedia.org/w/api.php";
+// Wikimedia rejects requests without a descriptive User-Agent (HTTP 403).
+const WIKI_HEADERS = {
+  "User-Agent": "AtlasphereTravelApp/1.0 (https://github.com/nashwahamido/AtlasphereWebApp-Updated; atlasphere.app@gmail.com)",
+  "Accept": "application/json",
+};
 
 // Geoapify category codes broad enough to cover the 11 activity tags.
 const CATEGORIES = [
@@ -97,14 +102,61 @@ function looksLikeCode(name) {
   return false;
 }
 
-// Best-effort: replace each item's image with a real Wikipedia thumbnail when
-// the place name matches an article. One batched request (up to 50 titles);
-// anything without a match keeps its bundled category image. Never throws —
-// on any failure the category images stand.
+function usesCategoryImage(item) {
+  return item.image && item.image.indexOf("/images/") === 0;
+}
+
+// Guard against wildly wrong fuzzy matches: the article title must share a
+// meaningful word (>= 4 chars, either direction) with the place name.
+function titlesRelated(name, title) {
+  var toks = function (s) {
+    return String(s).toLowerCase().split(/[^a-z0-9]+/).filter(function (t) { return t.length >= 4; });
+  };
+  var a = toks(name), b = toks(title);
+  return a.some(function (t) {
+    return b.some(function (u) { return u === t || u.indexOf(t) !== -1 || t.indexOf(u) !== -1; });
+  });
+}
+
+// Fuzzy fallback: search Wikipedia for one place name and return the top
+// result's thumbnail, but only if the result's title is plausibly related.
+async function wikiSearchImage(name) {
+  try {
+    var res = await axios.get(WIKI_URL, {
+      params: {
+        action: "query",
+        format: "json",
+        generator: "search",
+        gsrsearch: name,
+        gsrlimit: 1,
+        prop: "pageimages",
+        piprop: "thumbnail",
+        pithumbsize: 600,
+      },
+      headers: WIKI_HEADERS,
+      timeout: 6000,
+    });
+    var pages = (res.data && res.data.query && res.data.query.pages) ? res.data.query.pages : {};
+    var keys = Object.keys(pages);
+    if (keys.length === 0) return null;
+    var p = pages[keys[0]];
+    if (!p || !p.title || !p.thumbnail || !p.thumbnail.source) return null;
+    if (!titlesRelated(name, p.title)) return null;
+    return p.thumbnail.source;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Best-effort: replace each item's category image with a real Wikipedia photo.
+// Pass 1 — one batched title lookup (fast, catches well-known places).
+// Pass 2 — a capped set of per-place fuzzy searches for whatever pass 1 missed.
+// Anything still unmatched keeps its bundled category image. Never throws.
 async function attachWikipediaImages(items) {
   var named = items.filter(function (i) { return i.name; }).slice(0, 50);
   if (named.length === 0) return items;
 
+  // ── Pass 1: batched exact-title lookup ──
   try {
     var res = await axios.get(WIKI_URL, {
       params: {
@@ -116,18 +168,13 @@ async function attachWikipediaImages(items) {
         titles: named.map(function (i) { return i.name; }).join("|"),
         redirects: 1,
       },
-      // Wikimedia rejects requests without a descriptive User-Agent (HTTP 403).
-      headers: {
-        "User-Agent": "AtlasphereTravelApp/1.0 (https://github.com/nashwahamido/AtlasphereWebApp-Updated; atlasphere.app@gmail.com)",
-        "Accept": "application/json",
-      },
+      headers: WIKI_HEADERS,
       timeout: 6000,
     });
 
     var q = (res.data && res.data.query) ? res.data.query : {};
     var pages = q.pages || {};
 
-    // normalized title -> thumbnail URL
     var thumbByTitle = {};
     Object.keys(pages).forEach(function (k) {
       var p = pages[k];
@@ -136,7 +183,6 @@ async function attachWikipediaImages(items) {
       }
     });
 
-    // Wikipedia rewrites some titles (case) or redirects them; follow those maps.
     var alias = {};
     (q.normalized || []).forEach(function (n) { alias[n.from.toLowerCase()] = n.to.toLowerCase(); });
     (q.redirects || []).forEach(function (r) { alias[r.from.toLowerCase()] = r.to.toLowerCase(); });
@@ -144,12 +190,21 @@ async function attachWikipediaImages(items) {
     items.forEach(function (item) {
       var key = String(item.name).toLowerCase();
       var resolved = alias[key] || key;
-      resolved = alias[resolved] || resolved; // resolve normalized -> redirect chain
+      resolved = alias[resolved] || resolved;
       var thumb = thumbByTitle[resolved];
       if (thumb) item.image = thumb;
     });
   } catch (e) {
-    console.error("Wikipedia image lookup failed (using category images):", e.message);
+    console.error("Wikipedia batch image lookup failed (using category images):", e.message);
+  }
+
+  // ── Pass 2: fuzzy per-place search for whatever still uses a category image ──
+  var unmatched = items.filter(usesCategoryImage).slice(0, 24);
+  if (unmatched.length > 0) {
+    await Promise.all(unmatched.map(async function (item) {
+      var img = await wikiSearchImage(item.name);
+      if (img) item.image = img;
+    }));
   }
 
   return items;
