@@ -5,12 +5,14 @@
 //   GEOAPIFY_API_KEY — API key from your Geoapify project
 //
 // Two calls: geocode the city, then list nearby places by category. Card
-// images come from the app's bundled per-category images (public/images/
-// <tag>.jpg), so we don't need any paid photo field.
+// images come from Wikipedia when a place matches an article, otherwise the
+// app's bundled per-category images (public/images/<tag>.jpg).
 const axios = require("axios");
 
 const GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search";
 const PLACES_URL = "https://api.geoapify.com/v2/places";
+// Wikipedia gives us free real photos for well-known places (batched, no key).
+const WIKI_URL = "https://en.wikipedia.org/w/api.php";
 
 // Geoapify category codes broad enough to cover the 11 activity tags.
 const CATEGORIES = [
@@ -87,6 +89,67 @@ function describe(categories) {
   }).join(" ");
 }
 
+// Skip raw OSM catalog codes that aren't real names, e.g. "PA_1200", "N45".
+function looksLikeCode(name) {
+  var n = String(name).trim();
+  if (/^[A-Za-z]{1,4}[ _\-]?\d+[A-Za-z]?$/.test(n)) return true; // PA_1200, N45, A1
+  if (n.replace(/[^A-Za-z]/g, "").length < 2) return true;       // mostly non-letters
+  return false;
+}
+
+// Best-effort: replace each item's image with a real Wikipedia thumbnail when
+// the place name matches an article. One batched request (up to 50 titles);
+// anything without a match keeps its bundled category image. Never throws —
+// on any failure the category images stand.
+async function attachWikipediaImages(items) {
+  var named = items.filter(function (i) { return i.name; }).slice(0, 50);
+  if (named.length === 0) return items;
+
+  try {
+    var res = await axios.get(WIKI_URL, {
+      params: {
+        action: "query",
+        format: "json",
+        prop: "pageimages",
+        piprop: "thumbnail",
+        pithumbsize: 600,
+        titles: named.map(function (i) { return i.name; }).join("|"),
+        redirects: 1,
+      },
+      timeout: 6000,
+    });
+
+    var q = (res.data && res.data.query) ? res.data.query : {};
+    var pages = q.pages || {};
+
+    // normalized title -> thumbnail URL
+    var thumbByTitle = {};
+    Object.keys(pages).forEach(function (k) {
+      var p = pages[k];
+      if (p && p.title && p.thumbnail && p.thumbnail.source) {
+        thumbByTitle[p.title.toLowerCase()] = p.thumbnail.source;
+      }
+    });
+
+    // Wikipedia rewrites some titles (case) or redirects them; follow those maps.
+    var alias = {};
+    (q.normalized || []).forEach(function (n) { alias[n.from.toLowerCase()] = n.to.toLowerCase(); });
+    (q.redirects || []).forEach(function (r) { alias[r.from.toLowerCase()] = r.to.toLowerCase(); });
+
+    items.forEach(function (item) {
+      var key = String(item.name).toLowerCase();
+      var resolved = alias[key] || key;
+      resolved = alias[resolved] || resolved; // resolve normalized -> redirect chain
+      var thumb = thumbByTitle[resolved];
+      if (thumb) item.image = thumb;
+    });
+  } catch (e) {
+    console.error("Wikipedia image lookup failed (using category images):", e.message);
+  }
+
+  return items;
+}
+
 async function fetchPlaces(city) {
   var apiKey = (process.env.GEOAPIFY_API_KEY || "").trim();
   if (!apiKey) {
@@ -128,7 +191,7 @@ async function getRecommendations(city, preferences) {
 
   var normalized = features
     .map(function (f) { return f && f.properties ? f.properties : null; })
-    .filter(function (p) { return p && p.name && String(p.name).trim(); })
+    .filter(function (p) { return p && p.name && String(p.name).trim() && !looksLikeCode(p.name); })
     .filter(function (p) {
       var key = String(p.name).trim().toLowerCase();
       if (seenNames[key]) return false;
@@ -148,7 +211,7 @@ async function getRecommendations(city, preferences) {
       };
     });
 
-  return normalized
+  var ranked = normalized
     .map(function (item) {
       var matched = 0;
       item.tags.forEach(function (t) { if (prefList.indexOf(t) !== -1) matched += 1; });
@@ -156,6 +219,8 @@ async function getRecommendations(city, preferences) {
     })
     .sort(function (a, b) { return b.score - a.score; })
     .map(function (entry) { return entry.item; });
+
+  return attachWikipediaImages(ranked);
 }
 
 module.exports = { getRecommendations, inferTags };
