@@ -189,7 +189,8 @@ router.post("/upload-photo", requireGroupAuth, function (req, res) {
   var path = require("path");
   var fs = require("fs");
   var file = req.files.groupPhoto;
-  var uploadDir = path.join(__dirname, "..", "assets", "uploads");
+  // Persistent uploads dir (Railway volume in prod) configured in server.js.
+  var uploadDir = req.app.get("uploadDir") || path.join(__dirname, "..", "assets", "uploads");
 
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
