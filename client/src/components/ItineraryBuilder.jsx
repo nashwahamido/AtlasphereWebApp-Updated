@@ -604,10 +604,12 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
                       <div className="ib-block__row">
                         <span className="ib-block__text">{block.name || block.text}</span>
                         <div className="ib-block__controls">
-                          <button className="ib-block__cmt-btn" title="Comments"
+                          <button className="ib-block__cmt-btn" title="Add or view notes"
                             onClick={e => { e.stopPropagation(); openComments(activeDay, h, block.name || block.text); }}>
-                            <span aria-hidden="true">💬</span>
-                            {commentCounts[activeDay + '|' + h] ? <span className="ib-block__cmt-count">{commentCounts[activeDay + '|' + h]}</span> : null}
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+                              <path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-4 4V5a2 2 0 0 1 1-2z" />
+                            </svg>
+                            <span className="ib-block__cmt-label">{commentCounts[activeDay + '|' + h] ? commentCounts[activeDay + '|' + h] : 'Note'}</span>
                           </button>
                           <span className="ib-block__dur">{formatDuration(dur)}</span>
                           <button className="ib-block__resize-btn" disabled={!canShrink}
