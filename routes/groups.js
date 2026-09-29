@@ -175,8 +175,15 @@ router.post("/upload-photo", requireGroupAuth, function (req, res) {
   var db = getDb(req);
   var groupId = req.body.groupId;
 
+  // Where to go after saving. During creation the form omits redirectTo and we
+  // fall back to the activities step; when changing the photo later the group
+  // page passes redirectTo=/groups/<id> so the user stays where they were.
+  var fallback = "/groups/create/activities?groupId=" + groupId;
+  var redirectTo = req.body.redirectTo;
+  var dest = (typeof redirectTo === "string" && /^\/groups(\/|\?|$)/.test(redirectTo)) ? redirectTo : fallback;
+
   if (!req.files || !req.files.groupPhoto) {
-    return res.redirect("back");
+    return res.redirect(dest);
   }
 
   var path = require("path");
@@ -199,14 +206,14 @@ router.post("/upload-photo", requireGroupAuth, function (req, res) {
     .toFile(filePath, function(sharpErr) {
     if (sharpErr) {
       console.error("Group photo upload error:", sharpErr);
-      return res.redirect("/groups/create/activities?groupId=" + groupId);
+      return res.redirect(dest);
     }
     var dbPath = "/uploads/" + fileName;
 
     db.query("UPDATE tbl_groups SET photo = ? WHERE id = ?", [dbPath, groupId], function (dbErr) {
       if (dbErr) console.error("Group photo DB error:", dbErr.message);
       else console.log("Group photo saved (resized):", dbPath);
-      res.redirect("/groups/create/activities?groupId=" + groupId);
+      res.redirect(dest);
     });
   });
 });
