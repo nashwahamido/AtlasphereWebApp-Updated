@@ -69,7 +69,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static("assets"));
 app.use(fileUpload());
-app.use("/uploads", express.static(path.join(__dirname, "assets/uploads")));
+
+// Where user uploads (profile + group photos) are written and served from.
+// Railway's container disk is ephemeral, so in production this points at a
+// mounted persistent volume via UPLOAD_DIR (e.g. /data/uploads); locally it
+// defaults to assets/uploads.
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "assets", "uploads");
+if (!fs.existsSync(UPLOAD_DIR)) { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); }
+app.set("uploadDir", UPLOAD_DIR);
+app.use("/uploads", express.static(UPLOAD_DIR));
 
 // ── DATABASE ─────────────────────────────────────────────────────────────
 const connection = mysql.createPool({
@@ -631,7 +639,7 @@ app.post("/setup/upload", requireAuth, (req, res) => {
   }
 
   var file = req.files.profilePicture;
-  var uploadDir = path.join(__dirname, "assets/uploads");
+  var uploadDir = UPLOAD_DIR;
 
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -679,7 +687,7 @@ app.post("/profile/upload", requireAuth, (req, res) => {
   }
 
   var file = req.files.profilePicture;
-  var uploadDir = path.join(__dirname, "assets/uploads");
+  var uploadDir = UPLOAD_DIR;
 
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
