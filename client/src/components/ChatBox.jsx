@@ -164,7 +164,7 @@ var ChatBox = function(props) {
   // Let members change the group photo at any time: a small pencil button over
   // the icon opens a file picker and posts to /groups/upload-photo, which saves
   // the resized image and redirects back to this group page.
-  headerIcon = React.createElement('div', { style: { position: 'relative', display: 'inline-block', lineHeight: 0 } },
+  var headerIcon = React.createElement('div', { style: { position: 'relative', display: 'inline-block', lineHeight: 0 } },
     iconInner,
     React.createElement('form', { action: '/groups/upload-photo', method: 'post', encType: 'multipart/form-data', style: { margin: 0 } },
       React.createElement('input', { type: 'hidden', name: 'groupId', value: groupId }),
