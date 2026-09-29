@@ -139,16 +139,17 @@ var ChatBox = function(props) {
     return 'Active ' + Math.floor(diff / 86400) + 'd ago';
   }
 
-  var headerIcon;
+  var photoInputRef = useRef(null);
+  var iconInner;
   if (groupPhoto) {
-    headerIcon = React.createElement('div', { className: 'cb__header-icon', style: { overflow: 'hidden' } },
+    iconInner = React.createElement('div', { className: 'cb__header-icon', style: { overflow: 'hidden' } },
       React.createElement('img', { src: groupPhoto, alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' } })
     );
   } else if (groupFlag) {
     var flagCode = Array.from(groupFlag).map(function(c) {
       return String.fromCharCode(c.codePointAt(0) - 127397);
     }).join('').toLowerCase();
-    headerIcon = React.createElement('div', { className: 'cb__header-icon', style: { overflow: 'hidden' } },
+    iconInner = React.createElement('div', { className: 'cb__header-icon', style: { overflow: 'hidden' } },
       React.createElement('img', {
         src: 'https://flagcdn.com/w80/' + flagCode + '.png',
         alt: groupFlag,
@@ -157,8 +158,36 @@ var ChatBox = function(props) {
       })
     );
   } else {
-    headerIcon = React.createElement('div', { className: 'cb__header-icon', style: { backgroundColor: groupColor } });
+    iconInner = React.createElement('div', { className: 'cb__header-icon', style: { backgroundColor: groupColor } });
   }
+
+  // Let members change the group photo at any time: a small pencil button over
+  // the icon opens a file picker and posts to /groups/upload-photo, which saves
+  // the resized image and redirects back to this group page.
+  headerIcon = React.createElement('div', { style: { position: 'relative', display: 'inline-block', lineHeight: 0 } },
+    iconInner,
+    React.createElement('form', { action: '/groups/upload-photo', method: 'post', encType: 'multipart/form-data', style: { margin: 0 } },
+      React.createElement('input', { type: 'hidden', name: 'groupId', value: groupId }),
+      React.createElement('input', { type: 'hidden', name: 'redirectTo', value: '/groups/' + groupId }),
+      React.createElement('input', {
+        type: 'file', name: 'groupPhoto', accept: 'image/*', ref: photoInputRef,
+        style: { display: 'none' },
+        onChange: function(e) { if (e.target.files && e.target.files.length) e.target.form.submit(); }
+      }),
+      React.createElement('button', {
+        type: 'button',
+        title: 'Change group photo',
+        'aria-label': 'Change group photo',
+        onClick: function() { if (photoInputRef.current) photoInputRef.current.click(); },
+        style: {
+          position: 'absolute', right: -4, bottom: -4, width: 22, height: 22,
+          borderRadius: '50%', border: '2px solid #fff', background: '#0B3856',
+          color: '#fff', cursor: 'pointer', fontSize: 11, padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }
+      }, '✎')
+    )
+  );
 
   var statusText = messages.length > 0 ? 'Online' : (lastActive ? chatTimeAgo(lastActive) : 'Online');
 
