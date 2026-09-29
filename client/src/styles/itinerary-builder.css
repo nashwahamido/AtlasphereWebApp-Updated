@@ -286,8 +286,10 @@
 }
 .ib-block:hover .ib-block__drag-handle::after { opacity: 1; }
 /* ── Itinerary comments (notes per block) ─────────────────────────────── */
-.ib-block__cmt-btn { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0 2px; display: inline-flex; align-items: center; gap: 3px; color: inherit; }
-.ib-block__cmt-count { font-size: 10px; font-weight: 700; background: #0B3856; color: #fff; border-radius: 8px; padding: 0 5px; line-height: 16px; }
+.ib-block__cmt-btn { display: inline-flex; align-items: center; gap: 4px; background: #E8933A; color: #fff; border: none; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: 700; line-height: 1.5; cursor: pointer; }
+.ib-block__cmt-btn:hover { filter: brightness(1.06); }
+.ib-block__cmt-btn svg { display: block; }
+.ib-block__cmt-label { line-height: 1; }
 
 .ib-cmt-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
 .ib-cmt-modal { background: #12212e; color: #e8eef3; width: min(440px, 94vw); max-height: 80vh; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
