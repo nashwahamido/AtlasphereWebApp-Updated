@@ -285,3 +285,24 @@
   transition: opacity 0.2s;
 }
 .ib-block:hover .ib-block__drag-handle::after { opacity: 1; }
+/* ── Itinerary comments (notes per block) ─────────────────────────────── */
+.ib-block__cmt-btn { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0 2px; display: inline-flex; align-items: center; gap: 3px; color: inherit; }
+.ib-block__cmt-count { font-size: 10px; font-weight: 700; background: #0B3856; color: #fff; border-radius: 8px; padding: 0 5px; line-height: 16px; }
+
+.ib-cmt-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.ib-cmt-modal { background: #12212e; color: #e8eef3; width: min(440px, 94vw); max-height: 80vh; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+.ib-cmt-modal__head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #25384a; }
+.ib-cmt-modal__head h4 { margin: 0; font-size: 16px; display: flex; flex-direction: column; gap: 2px; }
+.ib-cmt-modal__slot { font-size: 12px; font-weight: 400; opacity: 0.6; }
+.ib-cmt-modal__close { background: none; border: none; font-size: 24px; line-height: 1; cursor: pointer; color: #e8eef3; }
+.ib-cmt-modal__list { padding: 8px 20px; overflow-y: auto; flex: 1; min-height: 90px; }
+.ib-cmt-empty { opacity: 0.55; font-size: 14px; text-align: center; padding: 24px 0; }
+.ib-cmt { padding: 10px 0; border-bottom: 1px solid #1c2c3a; }
+.ib-cmt:last-child { border-bottom: none; }
+.ib-cmt__meta { font-size: 12px; display: flex; gap: 8px; align-items: baseline; }
+.ib-cmt__meta span { opacity: 0.5; }
+.ib-cmt__text { font-size: 14px; margin-top: 3px; white-space: pre-wrap; word-break: break-word; }
+.ib-cmt-modal__add { display: flex; gap: 8px; padding: 14px 20px; border-top: 1px solid #25384a; }
+.ib-cmt-modal__add input { flex: 1; padding: 10px 12px; border: 1px solid #25384a; border-radius: 10px; font-size: 14px; background: #0d1a24; color: #e8eef3; }
+.ib-cmt-modal__add button { padding: 10px 18px; background: #E8933A; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+.ib-cmt-modal__add button:disabled { opacity: 0.5; cursor: default; }

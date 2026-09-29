@@ -1143,6 +1143,77 @@ app.get("/api/itinerary/dates", requireAuth, (req, res) => {
   );
 });
 
+// ── ITINERARY COMMENTS API ────────────────────────────────────────────────
+// Notes attached to a scheduled block, identified by (groupId, dayIndex, timeSlot).
+
+// List comments for one block, oldest first.
+app.get("/api/itinerary/comments", requireAuth, (req, res) => {
+  var { groupId, dayIndex, timeSlot } = req.query;
+  if (!groupId || dayIndex === undefined || !timeSlot) return res.json([]);
+  connection.query(
+    "SELECT id, userId, userName, comment, createdAt FROM tbl_itinerary_comments WHERE groupId = ? AND dayIndex = ? AND timeSlot = ? ORDER BY createdAt ASC",
+    [groupId, dayIndex, timeSlot],
+    function(err, rows) {
+      if (err) { console.error("Comment load error:", err.message); return res.json([]); }
+      res.json((rows || []).map(function(r) {
+        return { id: r.id, userId: r.userId, userName: r.userName, comment: r.comment, createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : null };
+      }));
+    }
+  );
+});
+
+// Count comments per block for a group, so the UI can badge which blocks have notes.
+app.get("/api/itinerary/comments/counts", requireAuth, (req, res) => {
+  var groupId = req.query.groupId;
+  if (!groupId) return res.json([]);
+  connection.query(
+    "SELECT dayIndex, timeSlot, COUNT(*) AS count FROM tbl_itinerary_comments WHERE groupId = ? GROUP BY dayIndex, timeSlot",
+    [groupId],
+    function(err, rows) {
+      if (err) { console.error("Comment count error:", err.message); return res.json([]); }
+      res.json(rows || []);
+    }
+  );
+});
+
+// Add a comment to a block (author taken from the session).
+app.post("/api/itinerary/comments", requireAuth, (req, res) => {
+  var userId = req.session.user.id;
+  var userName = req.session.user.username || 'Someone';
+  var { groupId, dayIndex, timeSlot, comment } = req.body;
+  var text = (comment || '').toString().trim();
+  if (!groupId || dayIndex === undefined || !timeSlot || !text) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+  if (text.length > 1000) text = text.slice(0, 1000);
+  connection.query(
+    "INSERT INTO tbl_itinerary_comments (groupId, dayIndex, timeSlot, userId, userName, comment) VALUES (?, ?, ?, ?, ?, ?)",
+    [groupId, dayIndex, timeSlot, userId, userName, text],
+    function(err, result) {
+      if (err) { console.error("Comment save error:", err.message); return res.status(500).json({ error: "Failed" }); }
+      res.json({
+        success: true,
+        comment: { id: result.insertId, userId: userId, userName: userName, comment: text, createdAt: new Date().toISOString() }
+      });
+    }
+  );
+});
+
+// Delete own comment.
+app.delete("/api/itinerary/comments", requireAuth, (req, res) => {
+  var userId = req.session.user.id;
+  var { id } = req.body;
+  if (!id) return res.status(400).json({ error: "Missing id" });
+  connection.query(
+    "DELETE FROM tbl_itinerary_comments WHERE id = ? AND userId = ?",
+    [id, userId],
+    function(err) {
+      if (err) { console.error("Comment delete error:", err.message); return res.status(500).json({ error: "Failed" }); }
+      res.json({ success: true });
+    }
+  );
+});
+
 // ── NOTIFICATIONS API ────────────────────────────────────────────────────
 
 // Get notifications for current user
@@ -1514,6 +1585,24 @@ server.listen(PORT, '0.0.0.0', function() {
     function(err) {
       if (err) { console.error("Migration note (activityImage widen):", err.message); }
       else { console.log("Widened tbl_activity_votes.activityImage to VARCHAR(1024)"); }
+    }
+  );
+
+  // Auto-migrate: create the itinerary comments table if it doesn't exist yet.
+  connection.query(
+    "CREATE TABLE IF NOT EXISTS tbl_itinerary_comments (" +
+    "id INT AUTO_INCREMENT PRIMARY KEY, " +
+    "groupId VARCHAR(64) NOT NULL, " +
+    "dayIndex INT NOT NULL, " +
+    "timeSlot VARCHAR(16) NOT NULL, " +
+    "userId VARCHAR(64), " +
+    "userName VARCHAR(255), " +
+    "comment VARCHAR(1000) NOT NULL, " +
+    "createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+    "INDEX idx_block (groupId, dayIndex, timeSlot))",
+    function(err) {
+      if (err) { console.error("Migration note (itinerary_comments):", err.message); }
+      else { console.log("Ensured tbl_itinerary_comments table exists"); }
     }
   );
 });

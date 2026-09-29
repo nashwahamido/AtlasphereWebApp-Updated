@@ -79,6 +79,69 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
   const [upvotedActivities, setUpvotedActivities] = useState([]);
   const [savedActivities, setSavedActivities] = useState([]);
 
+  // ── Itinerary comments (notes per scheduled block) ────────────────────────
+  const [commentCounts, setCommentCounts] = useState({}); // "day|slot" -> count
+  const [commentModal, setCommentModal] = useState(null); // { dayIndex, timeSlot, title }
+  const [commentList, setCommentList] = useState([]);
+  const [commentInput, setCommentInput] = useState('');
+  const [commentLoading, setCommentLoading] = useState(false);
+
+  function fmtCommentTime(iso) {
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return ''; }
+  }
+
+  const loadCommentCounts = useCallback(() => {
+    if (!gid) return;
+    fetch('/api/itinerary/comments/counts?groupId=' + gid)
+      .then(r => r.json())
+      .then(rows => {
+        var m = {};
+        (rows || []).forEach(function (r) { m[r.dayIndex + '|' + r.timeSlot] = r.count; });
+        setCommentCounts(m);
+      })
+      .catch(() => {});
+  }, [gid]);
+
+  const openComments = useCallback((dayIndex, timeSlot, title) => {
+    setCommentModal({ dayIndex: dayIndex, timeSlot: timeSlot, title: title });
+    setCommentList([]);
+    setCommentInput('');
+    setCommentLoading(true);
+    fetch('/api/itinerary/comments?groupId=' + gid + '&dayIndex=' + dayIndex + '&timeSlot=' + encodeURIComponent(timeSlot))
+      .then(r => r.json())
+      .then(rows => { setCommentList(rows || []); setCommentLoading(false); })
+      .catch(() => setCommentLoading(false));
+  }, [gid]);
+
+  const submitComment = useCallback(() => {
+    var text = commentInput.trim();
+    if (!text || !commentModal) return;
+    fetch('/api/itinerary/comments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId: gid, dayIndex: commentModal.dayIndex, timeSlot: commentModal.timeSlot, comment: text })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.comment) {
+          setCommentList(prev => prev.concat([data.comment]));
+          setCommentInput('');
+          setCommentCounts(prev => {
+            var m = Object.assign({}, prev);
+            var k = commentModal.dayIndex + '|' + commentModal.timeSlot;
+            m[k] = (m[k] || 0) + 1;
+            return m;
+          });
+        }
+      })
+      .catch(() => {});
+  }, [commentInput, commentModal, gid]);
+
+  useEffect(() => { if (isActive) loadCommentCounts(); }, [isActive, loadCommentCounts]);
+
   useEffect(() => {
     if (!gid || !isActive) return;
     fetch('/api/votes/saved?groupId=' + gid + '&type=upvote')
@@ -541,6 +604,11 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
                       <div className="ib-block__row">
                         <span className="ib-block__text">{block.name || block.text}</span>
                         <div className="ib-block__controls">
+                          <button className="ib-block__cmt-btn" title="Comments"
+                            onClick={e => { e.stopPropagation(); openComments(activeDay, h, block.name || block.text); }}>
+                            <span aria-hidden="true">💬</span>
+                            {commentCounts[activeDay + '|' + h] ? <span className="ib-block__cmt-count">{commentCounts[activeDay + '|' + h]}</span> : null}
+                          </button>
                           <span className="ib-block__dur">{formatDuration(dur)}</span>
                           <button className="ib-block__resize-btn" disabled={!canShrink}
                             onClick={e => { e.stopPropagation(); resizeBlock(h, -DURATION_STEP); }}
@@ -593,6 +661,39 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
           ))}
         </div>
       </div>
+
+      {commentModal && (
+        <div className="ib-cmt-overlay" onClick={() => setCommentModal(null)}>
+          <div className="ib-cmt-modal" onClick={e => e.stopPropagation()}>
+            <div className="ib-cmt-modal__head">
+              <h4>
+                {commentModal.title || 'Notes'}
+                <span className="ib-cmt-modal__slot">Day {commentModal.dayIndex + 1} · {commentModal.timeSlot}</span>
+              </h4>
+              <button className="ib-cmt-modal__close" onClick={() => setCommentModal(null)}>&times;</button>
+            </div>
+            <div className="ib-cmt-modal__list">
+              {commentLoading
+                ? <p className="ib-cmt-empty">Loading…</p>
+                : (commentList.length === 0
+                    ? <p className="ib-cmt-empty">No comments yet. Add the first note.</p>
+                    : commentList.map(c => (
+                        <div key={c.id} className="ib-cmt">
+                          <div className="ib-cmt__meta"><strong>{c.userName}</strong><span>{fmtCommentTime(c.createdAt)}</span></div>
+                          <div className="ib-cmt__text">{c.comment}</div>
+                        </div>
+                      ))
+                  )}
+            </div>
+            <div className="ib-cmt-modal__add">
+              <input type="text" value={commentInput} placeholder="Add a comment…"
+                onChange={e => setCommentInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitComment(); }} />
+              <button onClick={submitComment} disabled={!commentInput.trim()}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
