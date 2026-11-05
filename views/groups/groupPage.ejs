@@ -21,6 +21,25 @@
     .gp-tab-with-overlay::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
     .gp-tab-with-overlay::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
     .gp-tab-with-overlay { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+
+    /* ── Mobile shell ──
+       On phones a fixed 100vh shell is taller than the visible area (the URL
+       bar overlaps it), and with html/body overflow:hidden the lower content
+       becomes unreachable. Use a dynamic-viewport flex column instead: the
+       navbar takes its natural height and the app fills the rest, so inner
+       panes scroll correctly and nothing depends on a hard-coded navbar size. */
+    @media (max-width: 768px) {
+      body {
+        height: 100vh;      /* fallback */
+        height: 100dvh;     /* tracks the shrinking/growing mobile viewport */
+        display: flex;
+        flex-direction: column;
+      }
+      .gp-app { height: auto; flex: 1 1 auto; min-height: 0; }
+      .gp-content { min-height: 0; }
+      .gp-tab-with-overlay { -webkit-overflow-scrolling: touch; min-height: 0; }
+      .cb { -webkit-overflow-scrolling: touch; }
+    }
   </style>
 </head>
 <body>

@@ -76,4 +76,39 @@
     padding: 0;
     margin-right: 2px;
   }
+
+  /* ── Itinerary: single scroll container ──
+     The tab (.gp-tab-with-overlay) is the scroller on mobile; the schedule and
+     the activity list must NOT nest their own scroll area inside it or touch
+     scrolling gets trapped and the page feels frozen. */
+  .gp-tab-with-overlay .ib-schedule {
+    max-height: none;
+    overflow: visible;
+    min-height: 0;
+  }
+  .gp-tab-with-overlay .ib-panel__list {
+    max-height: none;
+    overflow: visible;
+  }
+  .gp-tab-with-overlay .ib-layout { padding: 12px; gap: 12px; }
+
+  /* Chat message list keeps momentum scrolling. */
+  .cb__messages { -webkit-overflow-scrolling: touch; }
+}
+
+/* ── Tap-to-place hint (touch devices only) ──
+   Finger drag-and-drop isn't possible with HTML5 drag events, so on touch the
+   itinerary uses tap-to-select then tap-to-place. Tell the user how. */
+.ib-tap-hint { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .ib-tap-hint {
+    display: block;
+    margin: 0 0 10px 0;
+    padding: 8px 12px;
+    background: var(--ib-highlight, #eef3f8);
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ib-text-muted, #6b7280);
+  }
 }

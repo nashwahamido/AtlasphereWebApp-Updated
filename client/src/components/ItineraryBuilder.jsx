@@ -214,6 +214,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
   const [dragInfo, setDragInfo] = useState(null);
   const [overSlot, setOverSlot] = useState(null);
   const [tapMode, setTapMode] = useState(false); // touch: tap-to-select then tap-to-place
+  const scheduleRef = useRef(null);
   const [hasLoadedBlocks, setHasLoadedBlocks] = useState(false);
 
   useEffect(() => {
@@ -390,6 +391,11 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
         return null;
       }
       setTapMode(true);
+      // On phones the activity list sits below the schedule; bring the slots
+      // into view so the next tap lands somewhere visible.
+      if (info.type === 'panel' && scheduleRef.current) {
+        try { scheduleRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+      }
       return info;
     });
   }, []);
@@ -574,7 +580,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
       </div>
 
       {/* ═══ CENTER: Schedule ═══ */}
-      <div className="ib-schedule">
+      <div className="ib-schedule" ref={scheduleRef}>
         {weekDays.length > 0 ? (
           <div className="ib-week" ref={weekStripRef}>
             {weekDays.map((d, i) => (
@@ -682,6 +688,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
         </div>
         <input className="ib-panel__search" type="text" placeholder="search activities"
           value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="ib-tap-hint">Tap an activity, then tap a time slot to add it to your day.</div>
         <div className="ib-panel__list">
           {filtered.length === 0 && (
             <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--ib-text-muted, #888)', fontSize: '13px' }}>
