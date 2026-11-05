@@ -65,6 +65,17 @@ app.set("views", path.join(__dirname, "views"));
 
 // ── MIDDLEWARE ───────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, "public")));
+
+// Absolute site/page URLs for the link-preview tags in views/partials/head-meta.ejs
+// (WhatsApp, Instagram, iMessage etc. need absolute image URLs). Railway terminates
+// HTTPS at its proxy, so honour X-Forwarded-Proto. SITE_URL can pin it explicitly.
+app.use(function (req, res, next) {
+  var proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+  var site = (process.env.SITE_URL || (proto + "://" + req.get("host"))).replace(/\/$/, "");
+  res.locals.siteUrl = site;
+  res.locals.pageUrl = site + req.originalUrl.split("?")[0];
+  next();
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static("assets"));
