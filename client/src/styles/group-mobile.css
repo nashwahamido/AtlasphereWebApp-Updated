@@ -14,7 +14,10 @@
      vertical scroll box too, which is exactly the nested scrolling iOS fumbles. */
   .gp-app { max-width: 100%; overflow-x: clip; }
   .gp-content { max-width: 100%; box-sizing: border-box; }
-  .gp-content img { max-width: 100%; height: auto; }
+  /* max-width only. A blanket height:auto here used to override components'
+     own image heights (e.g. the recommendation card photo, which must fill
+     the card), leaving a grey band under the picture on phones. */
+  .gp-content img { max-width: 100%; }
 
   /* Discover & itinerary: no inner scroll box on phones — the page scrolls
      (see groupPage.ejs). voting-system.css sets display:flex;overflow:hidden. */
