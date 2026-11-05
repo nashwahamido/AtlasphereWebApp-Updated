@@ -107,13 +107,15 @@
 .ib-timerow__slot--droppable:hover { background: rgba(232,147,58,0.14); }
 .ib-tap-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  position: sticky; top: 0; z-index: 5;
   margin: 0 0 12px 0; padding: 10px 14px;
-  background: rgba(232,147,58,0.12); border: 1px solid var(--ib-accent);
-  border-radius: 10px; font-size: 13px; color: var(--ib-text);
+  background: var(--ib-accent); border: 1px solid var(--ib-accent);
+  border-radius: 10px; font-size: 13px; color: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
 }
 .ib-tap-banner__text { min-width: 0; }
 .ib-tap-banner__cancel {
-  flex-shrink: 0; border: none; background: var(--ib-accent); color: #fff;
+  flex-shrink: 0; border: none; background: #fff; color: var(--ib-accent);
   font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer;
 }
 
