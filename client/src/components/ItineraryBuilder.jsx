@@ -214,7 +214,10 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
   const [dragInfo, setDragInfo] = useState(null);
   const [overSlot, setOverSlot] = useState(null);
   const [tapMode, setTapMode] = useState(false); // touch: tap-to-select then tap-to-place
+  const [touchDragging, setTouchDragging] = useState(false); // touch: press-hold-drag in progress
   const scheduleRef = useRef(null);
+  const touchRef = useRef(null);       // active touch-drag session
+  const suppressClickRef = useRef(0);  // ignore the click that follows a touch-drag
   const [hasLoadedBlocks, setHasLoadedBlocks] = useState(false);
 
   useEffect(() => {
@@ -385,6 +388,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
   // Touch-friendly tap-to-place: select an item, then tap a time slot.
   // HTML5 drag events never fire on touchscreens, so this is the mobile path.
   const selectForTap = useCallback((info) => {
+    if (Date.now() - suppressClickRef.current < 500) return; // click synthesised after a drag
     setDragInfo(prev => {
       if (prev && prev.type === info.type && prev.id === info.id && prev.from === info.from) {
         setTapMode(false); // tapping the same selection again cancels it
@@ -403,8 +407,111 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
   const cancelTap = useCallback(() => { setDragInfo(null); setTapMode(false); setOverSlot(null); }, []);
 
   const slotTap = useCallback((timeKey) => {
+    if (Date.now() - suppressClickRef.current < 500) return; // came from a drag
     if (tapMode && dragInfo) placeInSlot(timeKey, dragInfo);
   }, [tapMode, dragInfo, placeInSlot]);
+
+  // ── Press-hold-drag for touchscreens ─────────────────────────────────────
+  // HTML5 drag never fires on touch. Instead: hold ~230ms to lift an item,
+  // then drag it onto a time slot (with auto-scroll when the finger nears an
+  // edge, since the activity list sits far below the schedule on phones). A
+  // quick tap falls through to the onClick tap-to-place handler.
+  const hourFromPoint = (x, y) => {
+    try {
+      var el = document.elementFromPoint(x, y);
+      while (el && el !== document.body) {
+        if (el.dataset && el.dataset.hour) return el.dataset.hour;
+        el = el.parentElement;
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  const endTouchDrag = useCallback(() => {
+    var s = touchRef.current;
+    if (!s) return;
+    try { window.removeEventListener('touchmove', s.onMove, { passive: false }); } catch (e) {}
+    try { window.removeEventListener('touchend', s.onEnd); } catch (e) {}
+    try { window.removeEventListener('touchcancel', s.onEnd); } catch (e) {}
+    if (s.timer) clearTimeout(s.timer);
+    if (s.scrollTimer) clearInterval(s.scrollTimer);
+    if (s.ghost && s.ghost.parentNode) s.ghost.parentNode.removeChild(s.ghost);
+    touchRef.current = null;
+    setTouchDragging(false);
+    setOverSlot(null);
+  }, []);
+
+  const startTouchDrag = useCallback((info, e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    if (touchRef.current) endTouchDrag();
+    var t = e.touches[0];
+    var s = {
+      info: info,
+      startX: t.clientX, startY: t.clientY,
+      x: t.clientX, y: t.clientY,
+      dragging: false, ghost: null, timer: null, scrollTimer: null,
+      scrollEl: scheduleRef.current ? scheduleRef.current.closest('.gp-tab-with-overlay') : null,
+      onMove: null, onEnd: null,
+    };
+
+    s.onMove = function (ev) {
+      var pt = ev.touches && ev.touches[0];
+      if (!pt) return;
+      s.x = pt.clientX; s.y = pt.clientY;
+      if (!s.dragging) {
+        // Moved before the hold completed → it's a scroll, not a drag.
+        if (Math.abs(pt.clientX - s.startX) > 10 || Math.abs(pt.clientY - s.startY) > 10) endTouchDrag();
+        return;
+      }
+      ev.preventDefault(); // we own the gesture now; stop the page scrolling
+      if (s.ghost) { s.ghost.style.left = pt.clientX + 'px'; s.ghost.style.top = pt.clientY + 'px'; }
+      setOverSlot(hourFromPoint(pt.clientX, pt.clientY));
+    };
+
+    s.onEnd = function () {
+      var wasDragging = s.dragging;
+      var dropHour = wasDragging ? hourFromPoint(s.x, s.y) : null;
+      var info2 = s.info;
+      if (wasDragging) suppressClickRef.current = Date.now();
+      endTouchDrag();
+      if (wasDragging && dropHour) placeInSlot(dropHour, info2);
+    };
+
+    s.timer = setTimeout(function () {
+      if (!touchRef.current) return;
+      s.dragging = true;
+      setTouchDragging(true);
+      setDragInfo(info);
+      setTapMode(false);
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+      try {
+        var g = document.createElement('div');
+        g.className = 'ib-drag-ghost';
+        g.textContent = info.name || '';
+        g.style.left = s.x + 'px';
+        g.style.top = s.y + 'px';
+        document.body.appendChild(g);
+        s.ghost = g;
+      } catch (e) {}
+      // Continuously scroll when the finger rests near the top/bottom edge.
+      s.scrollTimer = setInterval(function () {
+        var sc = s.scrollEl;
+        if (!sc) return;
+        var r = sc.getBoundingClientRect();
+        var EDGE = 56;
+        if (s.y < r.top + EDGE) sc.scrollTop -= 14;
+        else if (s.y > r.bottom - EDGE) sc.scrollTop += 14;
+      }, 16);
+    }, 230);
+
+    window.addEventListener('touchmove', s.onMove, { passive: false });
+    window.addEventListener('touchend', s.onEnd);
+    window.addEventListener('touchcancel', s.onEnd);
+    touchRef.current = s;
+  }, [endTouchDrag, placeInSlot]);
+
+  // Clean up any dangling listeners if the component unmounts mid-drag.
+  useEffect(() => endTouchDrag, [endTouchDrag]);
 
   const removeBlock = (k) => {
     setAllBlocks(prev => { const d = { ...(prev[activeDay] || {}) }; delete d[k]; return { ...prev, [activeDay]: d }; });
@@ -628,7 +735,8 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             return (
               <div key={h} className="ib-timerow">
                 <span className="ib-timerow__label">{h}</span>
-                <div className={`ib-timerow__slot${overSlot === h ? ' ib-timerow__slot--over' : ''}${tapMode && !block ? ' ib-timerow__slot--droppable' : ''}`}
+                <div data-hour={h}
+                  className={`ib-timerow__slot${overSlot === h ? ' ib-timerow__slot--over' : ''}${(tapMode || touchDragging) && !block ? ' ib-timerow__slot--droppable' : ''}`}
                   onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDragEnter={e => { e.preventDefault(); setOverSlot(h); }}
                   onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOverSlot(null); }}
@@ -636,7 +744,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
                   onClick={() => slotTap(h)}>
                   {block && (
                     <div
-                      className={`ib-block${tapMode && dragInfo && dragInfo.type === 'block' && dragInfo.from === h ? ' ib-block--selected' : ''}`}
+                      className={`ib-block${(tapMode || touchDragging) && dragInfo && dragInfo.type === 'block' && dragInfo.from === h ? ' ib-block--selected' : ''}`}
                       draggable
                       onDragStart={e => blockDragStart(e, h, block)}
                       style={{
@@ -646,7 +754,8 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
                     >
                       <div className="ib-block__row">
                         <span className="ib-block__text" style={{ cursor: 'pointer' }}
-                          onClick={e => { e.stopPropagation(); selectForTap({ type: 'block', id: block.id, name: block.name || block.text, from: h, duration: block.duration || 1, color: block.color || '#E8933A' }); }}>
+                          onClick={e => { e.stopPropagation(); selectForTap({ type: 'block', id: block.id, name: block.name || block.text, from: h, duration: block.duration || 1, color: block.color || '#E8933A' }); }}
+                          onTouchStart={e => startTouchDrag({ type: 'block', id: block.id, name: block.name || block.text, from: h, duration: block.duration || 1, color: block.color || '#E8933A' }, e)}>
                           {block.name || block.text}</span>
                         <div className="ib-block__controls">
                           <button className="ib-block__cmt-btn" title="Add or view notes"
@@ -688,7 +797,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
         </div>
         <input className="ib-panel__search" type="text" placeholder="search activities"
           value={search} onChange={e => setSearch(e.target.value)} />
-        <div className="ib-tap-hint">Tap an activity, then tap a time slot to add it to your day.</div>
+        <div className="ib-tap-hint">Press &amp; hold an activity to drag it onto a time slot — or tap it, then tap a slot.</div>
         <div className="ib-panel__list">
           {filtered.length === 0 && (
             <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--ib-text-muted, #888)', fontSize: '13px' }}>
@@ -698,10 +807,11 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
           )}
           {filtered.map(a => (
             <div key={a.id}
-              className={`ib-act${tapMode && dragInfo && dragInfo.type === 'panel' && dragInfo.id === a.id ? ' ib-act--selected' : ''}`}
+              className={`ib-act${(tapMode || touchDragging) && dragInfo && dragInfo.type === 'panel' && dragInfo.id === a.id ? ' ib-act--selected' : ''}`}
               draggable
               onDragStart={e => panelDragStart(e, a)}
-              onClick={() => selectForTap({ type: 'panel', name: a.name, id: a.id, color: a.color || '#E8933A' })}>
+              onClick={() => selectForTap({ type: 'panel', name: a.name, id: a.id, color: a.color || '#E8933A' })}
+              onTouchStart={e => startTouchDrag({ type: 'panel', name: a.name, id: a.id, color: a.color || '#E8933A' }, e)}>
               <div className="ib-act__icon" style={{ backgroundColor: a.color, overflow: 'hidden' }}>
                 {a.image && <img src={a.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />}
               </div>
