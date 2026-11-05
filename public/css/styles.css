@@ -345,6 +345,17 @@ body {
   color: var(--text-secondary);
 }
 
+/* Footer is a 4-up grid on desktop; collapse and let long links (email) wrap
+   on phones so they don't push the page wider than the viewport. */
+@media (max-width: 768px) {
+  .global-footer { padding: 32px 20px; margin-top: 48px; }
+  .footer-content { grid-template-columns: 1fr 1fr; gap: 24px 16px; }
+  .footer-section p, .footer-section a { overflow-wrap: anywhere; word-break: break-word; }
+}
+@media (max-width: 400px) {
+  .footer-content { grid-template-columns: 1fr; }
+}
+
 /* ===== PROFILE PAGE ===== */
 .profile-main {
   max-width: 900px;
@@ -830,12 +841,14 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .lp-login { padding: 8px 24px; border-radius: 30px; background: #3B5F8A; color: #fff; font-weight: 600; font-size: 14px; text-decoration: none; transition: all 0.3s; }
 .lp-login:hover { background: #2B4C6F; }
 
-.lp-hero { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px 40px; }
+.lp-hero { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px 40px; min-height: calc(100vh - 80px); }
 .lp-hero__box { position: relative; width: 100%; max-width: 1280px; aspect-ratio: 16/8.5; border-radius: 24px; overflow: hidden; border: 2px solid var(--hero-border, rgba(100,140,200,0.35)); box-shadow: var(--hero-shadow, 0 0 60px rgba(80,120,180,0.15)); }
 .lp-hero__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .lp-hero__overlay { position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) 60%, rgba(0,0,0,0.55) 100%); }
 .lp-hero__content { position: relative; z-index: 2; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 50px 60px; }
-.lp-hero__title { font-size: clamp(3rem, 8vw, 5.5rem); font-weight: 800; color: #fff; line-height: 1.0; letter-spacing: -0.02em; max-width: 700px; }
+.lp-hero__title { font-size: clamp(3rem, 8vw, 5.5rem); font-weight: 800; color: #fff; line-height: 1.0; letter-spacing: -0.02em; max-width: 700px; margin-bottom: 24px; }
+.lp-hero__logo { height: clamp(5rem, 12vw, 9rem); width: auto; max-width: 100%; display: inline-block; filter: brightness(0) invert(1); vertical-align: middle; }
+.lp-hero__tagline { font-size: clamp(1rem, 1.8vw, 1.3rem); color: rgba(255,255,255,0.85); font-weight: 400; line-height: 1.5; max-width: 560px; }
 .lp-hero__buttons { display: flex; gap: 20px; justify-content: center; }
 .lp-btn { display: inline-flex; align-items: center; justify-content: center; padding: 14px 48px; border-radius: 30px; font-weight: 600; font-size: 16px; text-decoration: none; cursor: pointer; transition: all 0.3s; min-width: 160px; font-family: var(--font); }
 .lp-btn--outline { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.5); }
@@ -845,11 +858,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 @media (max-width: 768px) {
   .lp-nav { padding: 14px 20px; }
-  .lp-hero { padding: 0 16px 24px; }
-  .lp-hero__box { aspect-ratio: auto; min-height: 420px; }
-  .lp-hero__content { padding: 30px 24px; }
-  .lp-hero__title { font-size: clamp(2rem, 10vw, 3.5rem); }
-  .lp-hero__buttons { flex-direction: column; gap: 12px; }
+  .lp-hero { padding: 0 16px 24px; min-height: calc(100dvh - 80px); }
+  .lp-hero__box { aspect-ratio: auto; min-height: 460px; height: calc(100dvh - 104px); }
+  .lp-hero__content { padding: 28px 22px; }
+  .lp-hero__title { font-size: clamp(2rem, 9vw, 3.2rem); margin-bottom: 16px; }
+  .lp-hero__logo { height: clamp(3.5rem, 13vw, 5.5rem); }
+  .lp-hero__tagline { font-size: 15px; }
+  .lp-hero__buttons { flex-direction: column; gap: 12px; align-items: center; }
   .lp-btn { width: 100%; max-width: 260px; }
 }
 

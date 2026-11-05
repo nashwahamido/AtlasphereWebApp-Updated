@@ -14,6 +14,17 @@
   .gp-content { max-width: 100%; box-sizing: border-box; }
   .gp-content img { max-width: 100%; height: auto; }
 
+  /* Discover & itinerary tabs: force a plain vertical scroll container.
+     voting-system.css sets this to display:flex;overflow:hidden, which traps
+     touch scrolling — on phones we want a simple block that scrolls. */
+  .gp-tab-with-overlay {
+    display: block;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+  }
+
   /* ── Collapsible groups sidebar → off-canvas drawer ──
      Overrides sidebar.css's mobile rule (full-width 200px block) so the chat
      gets the whole screen and the groups list slides in on demand. */
