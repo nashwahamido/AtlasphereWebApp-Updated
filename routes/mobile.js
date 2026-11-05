@@ -5,6 +5,7 @@
 const express = require("express");
 const { check, validationResult } = require("express-validator");
 const tokens = require("../config/tokens");
+const { verifyPassword, upgradeToHash } = require("../config/passwords");
 
 const ACCESS_TTL = 60 * 60 * 24 * 30; // 30 days
 const PENDING_TTL = 60 * 30;          // 30 minutes, same as the emailed code
@@ -87,11 +88,12 @@ module.exports = function createMobileRouter(deps) {
           [email, email]
         );
         const row = rows[0];
-        let match = false;
-        if (row && row.password) {
-          try { match = await bcrypt.compare(password, row.password); } catch (e) { match = false; }
-        }
+        const { match, needsRehash } = row ? await verifyPassword(password, row.password) : { match: false, needsRehash: false };
         if (!match) return fail(res, 401, "Invalid email or password. Try again.");
+        if (needsRehash) {
+          try { await upgradeToHash(connection, row.IDuser, password); }
+          catch (e) { console.error("Mobile password upgrade failed:", e.message); }
+        }
 
         if (Number(row.isConfirmed) !== 1) {
           const pending = await issueAndSendCode(row.IDuser, row.email);
