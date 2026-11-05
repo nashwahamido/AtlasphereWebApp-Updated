@@ -22,35 +22,29 @@
     .gp-tab-with-overlay::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
     .gp-tab-with-overlay { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
 
-    /* ── Mobile shell ──
-       On phones a fixed 100vh shell is taller than the visible area (the URL
-       bar overlaps it), and with html/body overflow:hidden the lower content
-       becomes unreachable. Use a dynamic-viewport flex column instead: the
-       navbar takes its natural height and the app fills the rest, so inner
-       panes scroll correctly and nothing depends on a hard-coded navbar size. */
+    /* ── Mobile shell: the PAGE scrolls ──
+       Desktop keeps the fixed app shell above (locked page, panes scroll inside).
+       On phones that pattern is unreliable: iOS often refuses to start a touch
+       scroll inside a nested overflow box (e.g. when the swipe begins on the 3D
+       recommendation carousel), so the tabs felt frozen. Instead, on phones the
+       document itself scrolls — the most dependable scrolling on iOS, and it
+       lets the browser toolbars collapse for extra room. Chat keeps its header
+       and message box pinned with position: sticky (see group-mobile.css). */
     @media (max-width: 768px) {
-      body {
-        height: 100vh;      /* fallback */
-        height: 100dvh;     /* tracks the shrinking/growing mobile viewport */
-        display: flex;
-        flex-direction: column;
-      }
-      /* The navbar keeps its natural height; everything below fills the rest. */
-      body > nav, body > .navbar { flex: 0 0 auto; }
-      /* The React mount sits between <body> and .gp-app — it must carry the
-         flex height through, otherwise .gp-app's flex:1 has nothing to resolve
-         against, the app grows to full content height, and body's overflow
-         clips the lower part of the schedule (unreachable by scrolling). */
-      #group-tabs-root {
-        flex: 1 1 auto;
+      html, body { height: auto; overflow: visible; }
+      /* Never let anything (e.g. the carousel's side cards) widen the page:
+         a phone would zoom out and sideways-pan. Viewport-level only on html. */
+      html { overflow-x: hidden; }
+      body { min-height: 100vh; min-height: 100dvh; }
+      .gp-app, .gp-content, .gp-tab-with-overlay {
+        display: block;
+        height: auto;
         min-height: 0;
-        display: flex;
-        flex-direction: column;
+        overflow: visible;
       }
-      .gp-app { height: auto; flex: 1 1 auto; min-height: 0; }
-      .gp-content { min-height: 0; }
-      .gp-tab-with-overlay { -webkit-overflow-scrolling: touch; min-height: 0; }
-      .cb { -webkit-overflow-scrolling: touch; }
+      /* clip (not hidden) cuts off sideways overflow WITHOUT turning the
+         element into a scroll box. */
+      .gp-app, .gp-tab-with-overlay { overflow-x: clip; }
     }
   </style>
 </head>

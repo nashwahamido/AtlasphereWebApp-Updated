@@ -450,7 +450,13 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
       startX: t.clientX, startY: t.clientY,
       x: t.clientX, y: t.clientY,
       dragging: false, ghost: null, timer: null, scrollTimer: null,
-      scrollEl: scheduleRef.current ? scheduleRef.current.closest('.gp-tab-with-overlay') : null,
+      scrollEl: (function () {
+        // Desktop: the tab is a scroll box. Phones: the page scrolls (null).
+        var el = scheduleRef.current ? scheduleRef.current.closest('.gp-tab-with-overlay') : null;
+        if (!el) return null;
+        var oy = getComputedStyle(el).overflowY;
+        return (oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight ? el : null;
+      })(),
       onMove: null, onEnd: null,
     };
 
@@ -496,11 +502,12 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
       // Continuously scroll when the finger rests near the top/bottom edge.
       s.scrollTimer = setInterval(function () {
         var sc = s.scrollEl;
-        if (!sc) return;
-        var r = sc.getBoundingClientRect();
         var EDGE = 56;
-        if (s.y < r.top + EDGE) sc.scrollTop -= 14;
-        else if (s.y > r.bottom - EDGE) sc.scrollTop += 14;
+        var top = sc ? sc.getBoundingClientRect().top : 0;
+        var bottom = sc ? sc.getBoundingClientRect().bottom : window.innerHeight;
+        var dy = s.y < top + EDGE ? -14 : (s.y > bottom - EDGE ? 14 : 0);
+        if (!dy) return;
+        if (sc) sc.scrollTop += dy; else window.scrollBy(0, dy);
       }, 16);
     }, 230);
 
