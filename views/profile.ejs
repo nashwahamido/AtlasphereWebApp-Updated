@@ -72,15 +72,6 @@
         display: none;
       }
 
-      .fi {
-        width: 48px !important;
-        height: 36px !important;
-        background-size: cover !important;
-        border-radius: 4px;
-        margin: 2px;
-        display: inline-block;
-        vertical-align: middle;
-      }
     </style>
   </head>
   <body>
@@ -115,55 +106,77 @@
         <%= user ? user.username : 'Username' %>
       </div>
 
-      <div class="stats-row">
-        <div class="stat">
-          <p>Visited:</p>
-          <div class="flag-row">
-            <% if (user && user.visitedCountries && user.visitedCountries.length > 0) { %>
-              <% user.visitedCountries.forEach(function(country) { %>
-                <span
-                  class="fi fi-<%= (country.code || country).toLowerCase() %>"
-                  title="<%= country.name || country %>"
-                  style="display:inline-block; width:48px; height:36px; background-size:cover; border-radius:4px; box-shadow:0 0 0 1px rgba(0,0,0,0.1); margin:2px;">
-                </span>
-              <% }) %>
-            <% } else { %>
-              <span style="color: var(--text-secondary, #888); font-size: 14px;">None yet</span>
-            <% } %>
+      <%
+        var visited = (user && user.visitedCountries) || [];
+        var planning = (user && user.planningCountries) || [];
+        var cities = (user && user.visitedCities) || [];
+        var groupCount = user ? (user.groups_created || 0) : 0;
+        function cCode(c) { return String((c && c.code) || c || '').toLowerCase(); }
+        function cName(c) { return (c && c.name) || String(c || '').toUpperCase(); }
+      %>
+
+      <div class="pf-stats">
+        <div class="pf-stat">
+          <span class="pf-stat__num"><%= visited.length %></span>
+          <span class="pf-stat__label"><%= visited.length === 1 ? 'Country visited' : 'Countries visited' %></span>
+        </div>
+        <div class="pf-stat">
+          <span class="pf-stat__num"><%= planning.length %></span>
+          <span class="pf-stat__label">Planning to visit</span>
+        </div>
+        <div class="pf-stat">
+          <span class="pf-stat__num"><%= groupCount %></span>
+          <span class="pf-stat__label"><%= groupCount === 1 ? 'Group' : 'Groups' %></span>
+        </div>
+      </div>
+
+      <div class="pf-sections">
+        <section class="pf-card" aria-labelledby="pfVisited">
+          <div class="pf-card__head">
+            <h2 class="pf-card__title" id="pfVisited">Visited</h2>
+            <a href="/settings" class="pf-card__action">Edit</a>
           </div>
-          <% if (user && user.visitedCities && user.visitedCities.length > 0) { %>
-            <div style="margin-top: 10px; display:flex; flex-wrap:wrap; gap:6px;">
-              <% user.visitedCities.forEach(function(city) { %>
-                <span style="background:#f0f4f8; color:#0B3856; font-size:12px; font-weight:500;
-                  padding:4px 10px; border-radius:20px; border:1px solid #dce6f0;">
-                  <%= city %>
-                </span>
+          <% if (visited.length > 0) { %>
+            <ul class="pf-countries">
+              <% visited.forEach(function(country) { %>
+                <li class="pf-country" title="<%= cName(country) %>">
+                  <span class="fi fi-<%= cCode(country) %> pf-country__flag" aria-hidden="true"></span>
+                  <span class="pf-country__name"><%= cName(country) %></span>
+                </li>
               <% }) %>
-            </div>
+            </ul>
+          <% } else { %>
+            <p class="pf-empty">No countries yet. <a href="/settings">Add the places you've been</a></p>
           <% } %>
-        </div>
 
-        <div class="stat">
-          <p>Planning to visit:</p>
-          <div class="flag-row">
-            <% if (user && user.planningCountries && user.planningCountries.length > 0) { %>
-              <% user.planningCountries.forEach(function(country) { %>
-                <span
-                  class="fi fi-<%= (country.code || country).toLowerCase() %>"
-                  title="<%= country.name || country %>"
-                  style="display:inline-block; width:48px; height:36px; background-size:cover; border-radius:4px; box-shadow:0 0 0 1px rgba(0,0,0,0.1); margin:2px;">
-                </span>
+          <% if (cities.length > 0) { %>
+            <h3 class="pf-card__sub">Cities</h3>
+            <ul class="pf-cities">
+              <% cities.forEach(function(city) { %>
+                <li class="pf-city"><%= city %></li>
               <% }) %>
-            <% } else { %>
-              <span style="color: var(--text-secondary, #888); font-size: 14px;">No trips yet</span>
-            <% } %>
-          </div>
-        </div>
+            </ul>
+          <% } %>
+        </section>
 
-        <div class="stat">
-          <p>Number of Groups</p>
-          <span class="stat-number"><%= user ? (user.groups_created || 0) : 0 %></span>
-        </div>
+        <section class="pf-card" aria-labelledby="pfPlanning">
+          <div class="pf-card__head">
+            <h2 class="pf-card__title" id="pfPlanning">Planning to visit</h2>
+            <a href="/groups/create/country" class="pf-card__action">+ Trip</a>
+          </div>
+          <% if (planning.length > 0) { %>
+            <ul class="pf-countries">
+              <% planning.forEach(function(country) { %>
+                <li class="pf-country" title="<%= cName(country) %>">
+                  <span class="fi fi-<%= cCode(country) %> pf-country__flag" aria-hidden="true"></span>
+                  <span class="pf-country__name"><%= cName(country) %></span>
+                </li>
+              <% }) %>
+            </ul>
+          <% } else { %>
+            <p class="pf-empty">No trips yet. <a href="/groups/create/country">Plan your first trip</a></p>
+          <% } %>
+        </section>
       </div>
     </main>
 
