@@ -292,7 +292,7 @@ app.post("/auth/register", validationRegisterRules, async (req, res) => {
     const { username, useremail, userphone, gender, psw } = req.body;
 
     connection.query(
-      "SELECT IDuser FROM tbl_users WHERE email = ? LIMIT 1",
+      "SELECT IDuser, isConfirmed FROM tbl_users WHERE email = ? LIMIT 1",
       [useremail],
       async (checkErr, existingUsers) => {
         if (checkErr) {
@@ -301,11 +301,11 @@ app.post("/auth/register", validationRegisterRules, async (req, res) => {
         }
 
         if (existingUsers.length > 0) {
-          if (existingUsers[0].isConfirmed === 1) {
+          if (Number(existingUsers[0].isConfirmed) === 1) {
             return res.render("register", { title: "Register", error: "This email is already registered. Try logging in instead.", user: null });
           }
           // Unverified account — delete it and allow re-registration
-          await connection.promise().query("DELETE FROM tbl_users WHERE email = ?", [useremail]);
+          await connection.promise().query("DELETE FROM tbl_users WHERE email = ? AND isConfirmed = 0", [useremail]);
         }
 
         const hashedPassword = await bcrypt.hash(psw, 10);
@@ -966,6 +966,7 @@ app.post("/groups/save-activities", requireAuth, (req, res) => {
 });
 
 // ── GROUPS / USERS ROUTES ────────────────────────────────────────────────
+app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVerificationEmail, sendEmail, generateCode }));
 app.use("/groups", require("./routes/groups"));
 app.use("/users", require("./routes/users"));
 
