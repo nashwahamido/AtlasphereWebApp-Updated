@@ -271,6 +271,16 @@ var ChatBox = function(props) {
 
   return React.createElement('div', { className: compact ? 'cb cb--compact' : 'cb' },
     !compact && React.createElement('div', { className: 'cb__header' },
+      React.createElement('button', {
+        type: 'button', className: 'cb__sidebar-toggle', 'aria-label': 'Show groups',
+        onClick: function() { if (props.onOpenSidebar) props.onOpenSidebar(); }
+      },
+        React.createElement('svg', { width: '22', height: '22', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '2', strokeLinecap: 'round' },
+          React.createElement('line', { x1: '3', y1: '6', x2: '21', y2: '6' }),
+          React.createElement('line', { x1: '3', y1: '12', x2: '21', y2: '12' }),
+          React.createElement('line', { x1: '3', y1: '18', x2: '21', y2: '18' })
+        )
+      ),
       headerIcon,
       React.createElement('div', { className: 'cb__header-info' },
         React.createElement('div', { className: 'cb__header-name' }, groupName),

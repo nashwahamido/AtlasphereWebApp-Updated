@@ -45,11 +45,24 @@
     </label>
 
     <% if (typeof user !== 'undefined' && user) { %>
-      <a href="/auth/logout" class="btn btn-primary btn-sm">Sign out</a>
+      <a href="/auth/logout" class="btn btn-primary btn-sm navbar-signout-desktop">Sign out</a>
+      <button class="navbar-burger" id="navbarBurger" aria-label="Menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
     <% } else { %>
       <a href="/auth/login" class="btn btn-primary btn-sm">Log in</a>
     <% } %>
   </div>
+
+  <% if (typeof user !== 'undefined' && user) { %>
+  <div class="navbar-mobile-menu" id="navbarMobileMenu">
+    <a href="/" class="navbar-mobile-link">Home</a>
+    <a href="/groups" class="navbar-mobile-link">Groups</a>
+    <a href="/profile" class="navbar-mobile-link">Profile</a>
+    <a href="/settings" class="navbar-mobile-link">Settings</a>
+    <a href="/auth/logout" class="navbar-mobile-link navbar-mobile-link--signout">Sign out</a>
+  </div>
+  <% } %>
 </nav>
 
 <link rel="stylesheet" href="/css/chat-notification.css">
@@ -176,6 +189,24 @@
         link.classList.add('nav-link--active');
       } else if (href !== '/' && path.startsWith(href)) {
         link.classList.add('nav-link--active');
+      }
+    });
+  })();
+
+  // Mobile burger menu toggle
+  (function() {
+    var burger = document.getElementById('navbarBurger');
+    var menu = document.getElementById('navbarMobileMenu');
+    if (!burger || !menu) return;
+    burger.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var open = menu.classList.toggle('open');
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', function(e) {
+      if (!menu.contains(e.target) && e.target !== burger) {
+        menu.classList.remove('open');
+        burger.setAttribute('aria-expanded', 'false');
       }
     });
   })();
