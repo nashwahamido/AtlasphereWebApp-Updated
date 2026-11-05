@@ -35,6 +35,18 @@
         display: flex;
         flex-direction: column;
       }
+      /* The navbar keeps its natural height; everything below fills the rest. */
+      body > nav, body > .navbar { flex: 0 0 auto; }
+      /* The React mount sits between <body> and .gp-app — it must carry the
+         flex height through, otherwise .gp-app's flex:1 has nothing to resolve
+         against, the app grows to full content height, and body's overflow
+         clips the lower part of the schedule (unreachable by scrolling). */
+      #group-tabs-root {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
       .gp-app { height: auto; flex: 1 1 auto; min-height: 0; }
       .gp-content { min-height: 0; }
       .gp-tab-with-overlay { -webkit-overflow-scrolling: touch; min-height: 0; }
