@@ -1,0 +1,10 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Group workspace — mobile safety net.
+   Additive and MOBILE-ONLY (<=768px): these rules never change the desktop
+   layout. Targeted per-tab fixes are added here as we test on real devices.
+   ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .gp-app { max-width: 100%; overflow-x: hidden; }
+  .gp-content { max-width: 100%; box-sizing: border-box; }
+  .gp-content img { max-width: 100%; height: auto; }
+}

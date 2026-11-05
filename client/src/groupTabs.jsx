@@ -14,6 +14,7 @@ import './styles/chatbox.css';
 import './styles/chat-overlay.css';
 import './styles/itinerary-builder.css';
 import './styles/voting-system.css';
+import './styles/group-mobile.css';
 
 var mount = document.getElementById('group-tabs-root');
 
