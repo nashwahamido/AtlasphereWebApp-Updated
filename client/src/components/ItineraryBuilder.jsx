@@ -627,7 +627,11 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
     const strip = weekStripRef.current;
     const pill = activeDayRef.current;
     if (!strip || !pill) return;
-    strip.scrollLeft = pill.offsetLeft - strip.offsetWidth / 2 + pill.offsetWidth / 2;
+    // Centre the active day within the strip. Measure relative to the strip
+    // itself (offsetLeft is relative to the nearest positioned ancestor, which
+    // isn't the strip, so the old maths pushed the selected day off-screen).
+    const pillLeftInStrip = pill.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft;
+    strip.scrollLeft = Math.max(0, pillLeftInStrip - strip.clientWidth / 2 + pill.offsetWidth / 2);
   }, [activeDay, weekDays.length]);
 
   const currentActivities = panelMode === 'recommend' ? upvotedActivities : savedActivities;
