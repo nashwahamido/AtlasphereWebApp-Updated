@@ -31,6 +31,7 @@ function makeFakeDb() {
     if (/^UPDATE tbl_users SET verificationCode = \? WHERE IDuser = \?/.test(s)) { find((u) => u.IDuser === p[1]).verificationCode = p[0]; return [{}]; }
     if (/^UPDATE tbl_users SET isConfirmed = 1 WHERE IDuser = \?/.test(s)) { find((u) => u.IDuser === p[0]).isConfirmed = 1; return [{}]; }
     if (/^UPDATE tbl_users SET resetToken = \?/.test(s)) { const u = find((x) => x.IDuser === p[2]); u.resetToken = p[0]; return [{}]; }
+    if (/^UPDATE tbl_users SET password = \? WHERE IDuser = \?/.test(s)) { find((u) => u.IDuser === p[1]).password = p[0]; return [{}]; }
     throw new Error("Unexpected SQL in test: " + s);
   }
   return { users, connection: { promise: () => ({ query }) } };
@@ -111,6 +112,18 @@ test("login with the stored hash itself does not work", async (t) => {
   await app.call("POST", "/auth/verify", { pendingToken: reg.body.pendingToken, code: app.sent[0].code });
   const res = await app.call("POST", "/auth/login", { email: NEW_USER.email, password: app.users[0].password });
   assert.equal(res.status, 401);
+});
+
+test("a legacy plain-text password logs in once and is upgraded to a hash", async (t) => {
+  const app = await startApp();
+  t.after(app.close);
+  app.users.push({ IDuser: 99, username: "legacy", email: "legacy@example.com", password: "oldpass1", isConfirmed: 1, profilePictureUrl: "" });
+  const res = await app.call("POST", "/auth/login", { email: "legacy@example.com", password: "oldpass1" });
+  assert.equal(res.status, 200);
+  assert.match(app.users[0].password, /^\$2[aby]\$/, "stored as a bcrypt hash now");
+  assert.equal(await bcrypt.compare("oldpass1", app.users[0].password), true);
+  const again = await app.call("POST", "/auth/login", { email: "legacy@example.com", password: "oldpass1" });
+  assert.equal(again.status, 200, "still logs in after the upgrade");
 });
 
 test("an unverified account gets a fresh code instead of a session", async (t) => {

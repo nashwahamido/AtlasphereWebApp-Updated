@@ -11,6 +11,7 @@ const axios = require("axios");
 const sharp = require("sharp");
 const { sendEmail } = require("./config/mailer");
 const { getRecommendations } = require("./config/places");
+const { verifyPassword, upgradeToHash } = require("./config/passwords");
 
 
 // ── Validation Rules ────────────────────────────────────────────────────
@@ -217,20 +218,12 @@ app.post("/auth/login", validationLoginRules, (req, res) => {
       }
 
       const user = results[0];
-      let match = false;
-      console.log("Login: Found user:", user.username, "email:", user.email, "has password hash:", !!user.password);
-
-      try {
-        match = await bcrypt.compare(password, user.password);
-      } catch (err) {
-        match = false;
+      const { match, needsRehash } = await verifyPassword(password, user.password);
+      console.log("Login: Found user:", user.username, "| match:", match, needsRehash ? "| upgrading legacy password to a hash" : "");
+      if (match && needsRehash) {
+        try { await upgradeToHash(connection, user.IDuser, password); }
+        catch (e) { console.error("Password upgrade failed:", e.message); }
       }
-
-      if (!match && password === user.password) {
-        match = true;
-      }
-
-      console.log("Login: bcrypt match:", match);
 
       if (!match) {
         return res.render("login", {
@@ -796,7 +789,7 @@ app.post("/setup/save-visited", requireAuth, (req, res) => {
     function(err) {
       if (err) console.error("Save visited error:", err.message);
       req.session.save(function() {
-        res.redirect("/");
+        res.redirect("/profile/confirmed");
       });
     }
   );
@@ -806,7 +799,7 @@ app.post("/setup/save-visited", requireAuth, (req, res) => {
 
 app.get("/profile/confirmed", requireAuth, (req, res) => {
   try {
-    res.render("profile/confirmed", { user: req.session.user || null });
+    res.render("groups/profile/confirmed", { user: req.session.user || null });
   } catch (err) {
     console.error("Profile confirmed render error:", err.message);
     res.redirect("/");
