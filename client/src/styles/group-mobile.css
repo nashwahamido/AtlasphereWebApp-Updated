@@ -1,0 +1,79 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Group workspace — mobile safety net.
+   Additive and MOBILE-ONLY (<=768px): these rules never change the desktop
+   layout. Targeted per-tab fixes are added here as we test on real devices.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* The sidebar-drawer toggle (in the chat header) and the drawer close button
+   exist only to drive the mobile drawer — hidden on desktop at every width. */
+.cb__sidebar-toggle,
+.sb__close { display: none; }
+
+@media (max-width: 768px) {
+  .gp-app { max-width: 100%; overflow-x: hidden; }
+  .gp-content { max-width: 100%; box-sizing: border-box; }
+  .gp-content img { max-width: 100%; height: auto; }
+
+  /* ── Collapsible groups sidebar → off-canvas drawer ──
+     Overrides sidebar.css's mobile rule (full-width 200px block) so the chat
+     gets the whole screen and the groups list slides in on demand. */
+  .sb {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 82%;
+    max-width: 320px;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    border-right: 1px solid var(--ib-card-border, rgba(0,0,0,0.08));
+    z-index: 1000;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    box-shadow: 2px 0 24px rgba(0,0,0,0.18);
+  }
+  .sb--open { transform: translateX(0); }
+
+  /* Dimmed backdrop behind the open drawer (tap to close). */
+  .sb-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 999;
+  }
+
+  /* Close (×) button inside the drawer header. */
+  .sb__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--ib-text-muted, #6b7280);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  /* Hamburger toggle in the chat header that opens the drawer. */
+  .cb__sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--ib-text, #1a1a2e);
+    cursor: pointer;
+    padding: 0;
+    margin-right: 2px;
+  }
+}

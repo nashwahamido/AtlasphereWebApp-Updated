@@ -14,6 +14,7 @@ import './styles/chatbox.css';
 import './styles/chat-overlay.css';
 import './styles/itinerary-builder.css';
 import './styles/voting-system.css';
+import './styles/group-mobile.css';
 
 var mount = document.getElementById('group-tabs-root');
 
@@ -53,6 +54,11 @@ if (mount) {
     var activeGroup = groupState[0];
     var setActiveGroup = groupState[1];
 
+    // Mobile-only: the groups sidebar collapses into a drawer to give the chat room.
+    var sbState = React.useState(false);
+    var mobileSidebarOpen = sbState[0];
+    var setMobileSidebarOpen = sbState[1];
+
     var chatProps = {
       groupId: activeGroup.id || groupId,
       userId: userId,
@@ -74,9 +80,12 @@ if (mount) {
         activeTab === 'chat' && React.createElement(React.Fragment, null,
           React.createElement(Sidebar, {
             activeGroup: activeGroup,
-            onSelect: function(g) { setActiveGroup(g); }
+            onSelect: function(g) { setActiveGroup(g); setMobileSidebarOpen(false); },
+            mobileOpen: mobileSidebarOpen,
+            onClose: function() { setMobileSidebarOpen(false); }
           }),
-          React.createElement(ChatBox, Object.assign({ key: 'chat-' + (activeGroup.id || groupId) }, chatProps))
+          mobileSidebarOpen && React.createElement('div', { className: 'sb-backdrop', onClick: function() { setMobileSidebarOpen(false); } }),
+          React.createElement(ChatBox, Object.assign({ key: 'chat-' + (activeGroup.id || groupId), onOpenSidebar: function() { setMobileSidebarOpen(true); } }, chatProps))
         ),
 
         // Discover tab — always mounted, hidden when not active

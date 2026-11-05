@@ -62,13 +62,17 @@ var Sidebar = function(props) {
     return g.name.toLowerCase().indexOf(search.toLowerCase()) !== -1;
   });
 
-  return React.createElement('div', { className: 'sb' },
+  return React.createElement('div', { className: 'sb' + (props.mobileOpen ? ' sb--open' : '') },
     React.createElement('div', { className: 'sb__header' },
       React.createElement('div', { className: 'sb__header-left' },
         React.createElement('span', { className: 'sb__title' }, 'Groups'),
         React.createElement('span', { className: 'sb__count' }, groups.length)
       ),
-      React.createElement('a', { href: '/groups/create/country', className: 'sb__add' }, '+')
+      React.createElement('a', { href: '/groups/create/country', className: 'sb__add' }, '+'),
+      React.createElement('button', {
+        type: 'button', className: 'sb__close', 'aria-label': 'Close groups',
+        onClick: function() { if (props.onClose) props.onClose(); }
+      }, '×')
     ),
     React.createElement('div', { className: 'sb__search-wrap' },
       React.createElement('input', {
