@@ -1366,6 +1366,26 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 [data-theme="light"] .notif-item--unread { background: rgba(232, 147, 58, 0.08); }
 [data-theme="light"] .notif-item:hover { background: rgba(0,0,0,0.03); }
 
+/* Phones: the 360px panel was pinned to the bell's right edge and hung off the
+   left side of the screen. Anchor it to the navbar instead (the wrapper stops
+   being the positioning box) so it spans the screen with a small margin, and
+   keep it within the visible height with its own scrolling list. */
+@media (max-width: 600px) {
+  .notif-wrapper { position: static; }
+  .notif-dropdown {
+    left: 10px;
+    right: 10px;
+    width: auto;
+    top: calc(100% + 6px);
+    max-height: min(70vh, 520px);
+    max-height: min(70dvh, 520px);
+  }
+  /* The bell script opens the panel with an inline display:block (not flex),
+     so the list needs its own limit: the panel's max minus its ~50px header. */
+  .notif-dropdown__list { max-height: calc(min(70vh, 520px) - 50px); max-height: calc(min(70dvh, 520px) - 50px); }
+  .notif-item { padding: 12px 14px; }
+}
+
 /* ── Scrollbars (in styles.css because Vite strips vendor pseudo-elements) ── */
 .sb__list::-webkit-scrollbar,
 .cb__messages::-webkit-scrollbar,
