@@ -70,10 +70,10 @@
 .ib-timerow { display: flex; align-items: flex-start; min-height: 48px; position: relative; }
 .ib-timerow::after { content: ''; position: absolute; top: 0; left: 48px; right: 0; height: 1px; background: var(--ib-divider); }
 .ib-timerow__label { width: 48px; flex-shrink: 0; font-size: 12px; font-weight: 500; color: var(--ib-text-muted); padding-top: 2px; }
-.ib-timerow__slot { flex: 1; min-height: 48px; padding: 2px 0; border-radius: 8px; transition: all 0.2s; }
+.ib-timerow__slot { flex: 1; min-width: 0; min-height: 48px; padding: 2px 0; border-radius: 8px; transition: all 0.2s; }
 .ib-timerow__slot--over { background: rgba(232,147,58,0.1); outline: 2px dashed var(--ib-accent); outline-offset: -2px; }
 
-.ib-block { background: var(--ib-accent); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 500; line-height: 1.4; cursor: grab; margin: 2px 0; display: flex; align-items: flex-start; gap: 8px; transition: all 0.2s; }
+.ib-block { min-width: 0; background: var(--ib-accent); color: #fff; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 500; line-height: 1.4; cursor: grab; margin: 2px 0; display: flex; align-items: flex-start; gap: 8px; transition: all 0.2s; }
 .ib-block:active { cursor: grabbing; }
 .ib-block:hover { box-shadow: 0 4px 12px rgba(232,147,58,0.25); transform: translateY(-1px); }
 .ib-block__text { flex: 1; }
@@ -138,8 +138,20 @@
   text-overflow: ellipsis;
 }
 
-@media (max-width: 1100px) { .ib-layout { grid-template-columns: 1fr 1fr; } .ib-calendar { grid-column: 1 / -1; } }
-@media (max-width: 768px) { .ib-layout { grid-template-columns: 1fr; } }
+/* Grid tracks use minmax(0, 1fr), not plain 1fr: a plain 1fr track can't shrink
+   below its content's min width, so the horizontally scrolling week strip (12+
+   days) stretched the whole column far wider than a phone screen. */
+.ib-layout > * { min-width: 0; }
+@media (max-width: 1100px) { .ib-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .ib-calendar { grid-column: 1 / -1; } }
+@media (max-width: 768px) {
+  .ib-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .ib-calendar, .ib-panel { padding: 16px; }
+  .ib-cal__day { width: 34px; height: 34px; }
+}
+@media (max-width: 360px) {
+  .ib-cal__day { width: 30px; height: 30px; font-size: 12px; }
+}
+
 
 /* ── Scrollable week strip ── */
 .ib-week {
@@ -267,6 +279,9 @@
   transition: opacity 0.2s;
 }
 .ib-block:hover .ib-block__controls { opacity: 1; }
+/* Touch screens have no hover — always show the Note / duration / resize / remove
+   controls there, otherwise they're invisible on phones. */
+@media (hover: none) { .ib-block__controls { opacity: 1; } }
 
 .ib-block__dur {
   font-size: 11px;
@@ -346,3 +361,20 @@
 .ib-cmt-modal__add input { flex: 1; padding: 10px 12px; border: 1px solid #25384a; border-radius: 10px; font-size: 14px; background: #0d1a24; color: #e8eef3; }
 .ib-cmt-modal__add button { padding: 10px 18px; background: #E8933A; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
 .ib-cmt-modal__add button:disabled { opacity: 0.5; cursor: default; }
+
+/* (kept last so it overrides the base block-row rules above) */
+/* Phones: give long activity names their own line (up to 2 lines) with the
+   controls underneath, instead of truncating the name to a few characters. */
+@media (max-width: 480px) {
+  .ib-block { padding: 8px 10px; }
+  .ib-block__row { flex-wrap: wrap; row-gap: 6px; }
+  .ib-block__row .ib-block__text {
+    flex: 1 1 100%;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .ib-block__controls { margin-left: auto; }
+  .ib-timerow__label { width: 42px; }
+}

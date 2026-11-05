@@ -26,18 +26,23 @@
   </div>
 </nav>
 
-<div style="padding:0 32px 32px;flex:1;display:flex;min-height:calc(100vh - 70px);">
-  <div style="flex:1;border-radius:24px;overflow:hidden;border:2px solid rgba(100,140,200,0.3);background-image:url('/images/hero-hiker.jpg');background-size:cover;background-position:center;position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:50px 60px;">
-    <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0.1) 0%,rgba(0,0,0,0.35) 60%,rgba(0,0,0,0.55) 100%);"></div>
-    <h1 style="position:relative;z-index:1;font-size:clamp(3rem,8vw,5.5rem);font-weight:800;color:#fff;line-height:1.0;letter-spacing:-0.02em;max-width:700px;font-family:'Lexend',sans-serif;">Welcome to<br>Atlasphere</h1>
-    <div style="position:relative;z-index:1;display:flex;gap:20px;justify-content:center;">
-      <% if (typeof user !== 'undefined' && user) { %>
-        <a href="/groups" class="lp-btn lp-btn--outline">My Trips</a>
-        <a href="/groups/create/country" class="lp-btn lp-btn--orange">Create a Trip</a>
-      <% } else { %>
-        <a href="/auth/register" class="lp-btn lp-btn--outline">Register</a>
-        <a href="/auth/login" class="lp-btn lp-btn--orange">login</a>
-      <% } %>
+<div class="lp-hero">
+  <div class="lp-hero__box">
+    <img src="/images/hero-hiker.jpg" alt="" class="lp-hero__img">
+    <div class="lp-hero__overlay"></div>
+    <div class="lp-hero__content">
+      <div class="lp-hero__text">
+        <h1 class="lp-hero__title">Welcome to<br>Atlasphere</h1>
+      </div>
+      <div class="lp-hero__buttons">
+        <% if (typeof user !== 'undefined' && user) { %>
+          <a href="/groups" class="lp-btn lp-btn--outline">My Trips</a>
+          <a href="/groups/create/country" class="lp-btn lp-btn--orange">Create a Trip</a>
+        <% } else { %>
+          <a href="/auth/register" class="lp-btn lp-btn--outline">Register</a>
+          <a href="/auth/login" class="lp-btn lp-btn--orange">Log in</a>
+        <% } %>
+      </div>
     </div>
   </div>
 </div>

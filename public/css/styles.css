@@ -982,6 +982,17 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .auth-card .verify-email { color: #E8933A; font-weight: 600; font-size: 14px; margin-bottom: 24px; display: block; }
 .auth-card p { margin-top: 16px; font-size: 14px; color: rgba(255,255,255,0.7); }
 .auth-card p a { color: #E8933A; text-decoration: none; }
+/* Phones: the card's 48px side padding inside the frame's own padding left too
+   little room (verification boxes spilled out, Log in wrapped onto 2 lines). */
+@media (max-width: 600px) {
+  .auth-nav { padding: 14px 20px; gap: 12px; }
+  .auth-nav__btn { padding: 8px 18px; white-space: nowrap; flex-shrink: 0; }
+  .auth-card { padding: 28px 18px; }
+  .auth-card h1 { font-size: 1.5rem; margin-bottom: 20px; }
+}
+@media (max-width: 400px) {
+  .framed-box__content { padding: 16px 12px; }
+}
 
 .auth-fg { text-align: left; margin-bottom: 16px; }
 .auth-fg label { display: block; font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 6px; }
@@ -998,6 +1009,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .code-inputs { display: flex; gap: 10px; justify-content: center; margin-bottom: 24px; }
 .code-inputs input { width: 48px; height: 48px; text-align: center; font-size: 1.2rem; font-weight: 700; background: rgba(255,255,255,0.9); border: 2px solid rgba(255,255,255,0.2); border-radius: 10px; color: #1a1a2e; outline: none; font-family: inherit; transition: all 0.2s; }
 .code-inputs input:focus { border-color: #E8933A; box-shadow: 0 0 0 3px rgba(232,147,58,0.2); }
+/* Six boxes share whatever width the card has (never wider than 48px), so the
+   code row always fits inside the card on small phones. */
+.code-inputs input { flex: 1 1 0; min-width: 0; max-width: 48px; }
+@media (max-width: 400px) {
+  .code-inputs { gap: 6px; }
+  .code-inputs input { height: 44px; font-size: 1.1rem; padding: 0; }
+}
 
 /* Error/success messages */
 .msg-error { background: rgba(239,68,68,0.15); color: #f87171; padding: 10px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
@@ -1030,6 +1048,15 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .sel-search { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border-radius: 30px; padding: 8px 16px; max-width: 200px; margin-bottom: 24px; }
 .sel-search input { background: none; border: none; color: #fff; font-size: 13px; font-family: inherit; outline: none; width: 100%; }
 .sel-search input::placeholder { color: rgba(255,255,255,0.5); }
+/* Phones: the heading and the Skip pill collided; give the heading the row and
+   drop the extra inner padding so the content isn't squeezed. */
+@media (max-width: 600px) {
+  .sel-content { padding: 8px 0; }
+  .sel-header { flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .sel-header h1 { font-size: 1.6rem; flex: 1 1 100%; order: 2; }
+  .sel-header .skip-btn { order: 1; margin-left: auto; }
+  .sel-search { max-width: none; }
+}
 
 .flag-grid {
   display: grid;
