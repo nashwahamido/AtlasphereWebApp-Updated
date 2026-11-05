@@ -213,6 +213,7 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
   const [panelMode, setPanelMode] = useState('recommend');
   const [dragInfo, setDragInfo] = useState(null);
   const [overSlot, setOverSlot] = useState(null);
+  const [tapMode, setTapMode] = useState(false); // touch: tap-to-select then tap-to-place
   const [hasLoadedBlocks, setHasLoadedBlocks] = useState(false);
 
   useEffect(() => {
@@ -340,16 +341,20 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
     e.dataTransfer.setData('text/plain', block.id || '');
   };
 
-  const slotDrop = useCallback((e, timeKey) => {
-    e.preventDefault();
+  // Core placement — shared by HTML5 drag-drop (mouse) and tap-to-place (touch).
+  const placeInSlot = useCallback((timeKey, info) => {
     setOverSlot(null);
-    if (!dragInfo) return;
+    setTapMode(false);
+    setDragInfo(null);
+    if (!info) return;
+
+    var fromSlot = info.type === 'block' ? info.from : null;
+    if (fromSlot === timeKey) return; // dropped back where it started
 
     var slotIndex = HOURS.indexOf(timeKey);
-    var newName = dragInfo.name;
-    var newColor = dragInfo.color || '#E8933A';
-    var dur = dragInfo.type === 'block' ? (dragInfo.duration || 1) : 1;
-    var fromSlot = dragInfo.type === 'block' ? dragInfo.from : null;
+    var newName = info.name;
+    var newColor = info.color || '#E8933A';
+    var dur = info.type === 'block' ? (info.duration || 1) : 1;
 
     setAllBlocks(prev => {
       const dayData = { ...(prev[activeDay] || {}) };
@@ -362,15 +367,38 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
       finalDur = Math.min(finalDur, HOURS.length - slotIndex);
       if (finalDur < MIN_DURATION) finalDur = MIN_DURATION;
 
-      var newBlock = { id: dragInfo.id || ('sb-' + Date.now()), name: newName, color: newColor, duration: finalDur };
+      var newBlock = { id: info.id || ('sb-' + Date.now()), name: newName, color: newColor, duration: finalDur };
       dayData[timeKey] = newBlock;
 
       if (fromSlot) deleteBlockAPI(activeDay, fromSlot);
       persistBlock(activeDay, timeKey, newBlock);
       return { ...prev, [activeDay]: dayData };
     });
-    setDragInfo(null);
-  }, [dragInfo, activeDay, persistBlock, deleteBlockAPI]);
+  }, [activeDay, persistBlock, deleteBlockAPI]);
+
+  const slotDrop = useCallback((e, timeKey) => {
+    e.preventDefault();
+    placeInSlot(timeKey, dragInfo);
+  }, [dragInfo, placeInSlot]);
+
+  // Touch-friendly tap-to-place: select an item, then tap a time slot.
+  // HTML5 drag events never fire on touchscreens, so this is the mobile path.
+  const selectForTap = useCallback((info) => {
+    setDragInfo(prev => {
+      if (prev && prev.type === info.type && prev.id === info.id && prev.from === info.from) {
+        setTapMode(false); // tapping the same selection again cancels it
+        return null;
+      }
+      setTapMode(true);
+      return info;
+    });
+  }, []);
+
+  const cancelTap = useCallback(() => { setDragInfo(null); setTapMode(false); setOverSlot(null); }, []);
+
+  const slotTap = useCallback((timeKey) => {
+    if (tapMode && dragInfo) placeInSlot(timeKey, dragInfo);
+  }, [tapMode, dragInfo, placeInSlot]);
 
   const removeBlock = (k) => {
     setAllBlocks(prev => { const d = { ...(prev[activeDay] || {}) }; delete d[k]; return { ...prev, [activeDay]: d }; });
@@ -565,6 +593,14 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
           </div>
         )}
         <h4 className="ib-schedule__title">{scheduleTitle}</h4>
+        {tapMode && dragInfo && (
+          <div className="ib-tap-banner">
+            <span className="ib-tap-banner__text">
+              Tap a time slot to place <strong>{dragInfo.name}</strong>
+            </span>
+            <button type="button" className="ib-tap-banner__cancel" onClick={cancelTap}>Cancel</button>
+          </div>
+        )}
         <div className="ib-timeslots">
           {HOURS.map((h, hIdx) => {
             var isCovered = coveredSlots[h] !== undefined;
@@ -586,14 +622,15 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             return (
               <div key={h} className="ib-timerow">
                 <span className="ib-timerow__label">{h}</span>
-                <div className={`ib-timerow__slot${overSlot === h ? ' ib-timerow__slot--over' : ''}`}
+                <div className={`ib-timerow__slot${overSlot === h ? ' ib-timerow__slot--over' : ''}${tapMode && !block ? ' ib-timerow__slot--droppable' : ''}`}
                   onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                   onDragEnter={e => { e.preventDefault(); setOverSlot(h); }}
                   onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOverSlot(null); }}
-                  onDrop={e => slotDrop(e, h)}>
+                  onDrop={e => slotDrop(e, h)}
+                  onClick={() => slotTap(h)}>
                   {block && (
                     <div
-                      className="ib-block"
+                      className={`ib-block${tapMode && dragInfo && dragInfo.type === 'block' && dragInfo.from === h ? ' ib-block--selected' : ''}`}
                       draggable
                       onDragStart={e => blockDragStart(e, h, block)}
                       style={{
@@ -602,7 +639,9 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
                       }}
                     >
                       <div className="ib-block__row">
-                        <span className="ib-block__text">{block.name || block.text}</span>
+                        <span className="ib-block__text" style={{ cursor: 'pointer' }}
+                          onClick={e => { e.stopPropagation(); selectForTap({ type: 'block', id: block.id, name: block.name || block.text, from: h, duration: block.duration || 1, color: block.color || '#E8933A' }); }}>
+                          {block.name || block.text}</span>
                         <div className="ib-block__controls">
                           <button className="ib-block__cmt-btn" title="Add or view notes"
                             onClick={e => { e.stopPropagation(); openComments(activeDay, h, block.name || block.text); }}>
@@ -651,7 +690,11 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             </div>
           )}
           {filtered.map(a => (
-            <div key={a.id} className="ib-act" draggable onDragStart={e => panelDragStart(e, a)}>
+            <div key={a.id}
+              className={`ib-act${tapMode && dragInfo && dragInfo.type === 'panel' && dragInfo.id === a.id ? ' ib-act--selected' : ''}`}
+              draggable
+              onDragStart={e => panelDragStart(e, a)}
+              onClick={() => selectForTap({ type: 'panel', name: a.name, id: a.id, color: a.color || '#E8933A' })}>
               <div className="ib-act__icon" style={{ backgroundColor: a.color, overflow: 'hidden' }}>
                 {a.image && <img src={a.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />}
               </div>
