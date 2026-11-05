@@ -291,3 +291,17 @@
 .skip-activities-btn:hover {
   background: rgba(255, 255, 255, 0.25);
 }
+/* ── Phone type scale ──
+   The 2.8rem page title wrapped onto three huge lines and pushed Continue /
+   Skip below the fold. Scale headings and card titles for small screens. */
+@media (max-width: 640px) {
+  .activities-header { margin-bottom: 16px; }
+  .activities-header h1 { font-size: 1.9rem; line-height: 1.1; margin-bottom: 6px; }
+  .activities-header p { font-size: 0.95rem; }
+  .selection-title { font-size: 1.8rem; line-height: 1.05; }
+  .carousel-3d { height: 24rem; }
+}
+@media (max-width: 380px) {
+  .activities-header h1 { font-size: 1.7rem; }
+  .selection-title { font-size: 1.6rem; }
+}

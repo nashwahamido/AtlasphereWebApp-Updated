@@ -430,3 +430,24 @@
   0%   { transform: translateY(0) scale(1);      opacity: 1; }
   100% { transform: translateY(80px) scale(0.96); opacity: 0; }
 }
+/* ── Phone type scale ──
+   Same treatment as the activity picker: smaller page title, and activity
+   names that fit the card (max 3 lines) instead of filling half of it. */
+@media (max-width: 640px) {
+  .voting-header { margin-bottom: 16px; }
+  .voting-header h1 { font-size: 1.9rem; line-height: 1.1; margin-bottom: 6px; }
+  .voting-header p { font-size: 0.95rem; }
+  .activity-copy h2 {
+    font-size: 1.7rem;
+    line-height: 1.08;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .carousel-3d { height: 24rem; }
+}
+@media (max-width: 380px) {
+  .voting-header h1 { font-size: 1.7rem; }
+  .activity-copy h2 { font-size: 1.5rem; }
+}
