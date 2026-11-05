@@ -10,19 +10,33 @@
 .sb__close { display: none; }
 
 @media (max-width: 768px) {
-  .gp-app { max-width: 100%; overflow-x: hidden; }
+  /* overflow-x: clip (not hidden): "hidden" silently turns the element into a
+     vertical scroll box too, which is exactly the nested scrolling iOS fumbles. */
+  .gp-app { max-width: 100%; overflow-x: clip; }
   .gp-content { max-width: 100%; box-sizing: border-box; }
   .gp-content img { max-width: 100%; height: auto; }
 
-  /* Discover & itinerary tabs: force a plain vertical scroll container.
-     voting-system.css sets this to display:flex;overflow:hidden, which traps
-     touch scrolling — on phones we want a simple block that scrolls. */
-  .gp-tab-with-overlay {
-    display: block;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    min-height: 0;
+  /* Discover & itinerary: no inner scroll box on phones — the page scrolls
+     (see groupPage.ejs). voting-system.css sets display:flex;overflow:hidden. */
+  .gp-tab-with-overlay { display: block; overflow: visible; }
+
+  /* ── Chat tab: page scroll with pinned header and composer ──
+     Only the full chat (direct child of .gp-content), not the compact overlay. */
+  .gp-content > .cb {
+    height: auto;
+    min-height: calc(100vh - 140px);
+    min-height: calc(100dvh - 140px);
+  }
+  .gp-content > .cb .cb__messages { overflow: visible; flex: 1 0 auto; padding: 12px 14px; }
+  .gp-content > .cb .cb__header {
+    position: sticky; top: 0; z-index: 30;
+    background: var(--bg, #fff);
+    padding: 12px 14px;
+  }
+  .gp-content > .cb .cb__input-area {
+    position: sticky; bottom: 0; z-index: 30;
+    background: var(--bg, #fff);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
   }
 
   /* ── Collapsible groups sidebar → off-canvas drawer ──
@@ -103,8 +117,6 @@
   }
   .gp-tab-with-overlay .ib-layout { padding: 12px; gap: 12px; }
 
-  /* Chat message list keeps momentum scrolling. */
-  .cb__messages { -webkit-overflow-scrolling: touch; }
 }
 
 /* ── Tap-to-place hint (touch devices only) ──
