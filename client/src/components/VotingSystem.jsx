@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import "../styles/voting-system.css";
+import { getJson, destinationUrl, shortDate } from "./destinationInfo";
 
 //max number of cards visible on either side of the main card in the carousel
 var MAX_VISIBILITY = 2;
@@ -14,7 +15,7 @@ var icons = {
 };
 
 //main activity card will show image, tags, description and vote buttons
-function ActivityCard({ activity, vote, onVote, onShare, animation }) {
+function ActivityCard({ activity, vote, onVote, onShare, animation, closure }) {
   return (
     <div className={"vote-card" + (animation ? " " + animation : "")}>
       <img src={activity.image} alt={activity.name} className="vote-card-image" />
@@ -40,6 +41,7 @@ function ActivityCard({ activity, vote, onVote, onShare, animation }) {
         <div className="activity-copy">
           <h2>{activity.name}</h2>
           <p>{activity.description}</p>
+          {closure && <span className="vote-closed" title={closure.hours || ""}>{closure.text}</span>}
         </div>
 
 {/* yes/maybe/no vote buttons */}
@@ -243,6 +245,33 @@ export default function VotingSystem(props) {
       .catch(function () {});
   }, [groupId]);
 
+  // Which places are closed on the trip days (from their opening hours).
+  var closuresState = useState({});
+  var closures = closuresState[0];
+  var setClosures = closuresState[1];
+  useEffect(function () {
+    if (!groupId) return;
+    var cancelled = false;
+    getJson(destinationUrl(groupId, "places")).then(function (info) {
+      if (cancelled || !info || !info.tripDates) return;
+      var map = {};
+      var total = info.dates.length;
+      info.places.forEach(function (p) {
+        if (!p.closedOn.length) return;
+        var text = p.closedOn.length === total
+          ? (p.seasonal ? "Closed for the season on your dates" : "Closed on your dates")
+          : p.closedOn.length === 1
+            ? "Closed on " + shortDate(p.closedOn[0])
+            : "Closed on " + p.closedOn.length + " of your " + total + " days";
+        var entry = { text: text, hours: p.hours };
+        map["id:" + p.id] = entry;
+        map["name:" + String(p.name).trim().toLowerCase()] = entry;
+      });
+      setClosures(map);
+    }).catch(function () {});
+    return function () { cancelled = true; };
+  }, [groupId]);
+
   //filters out any activities the user has already voted on
   var visibleActivities = useMemo(function () {
     return activities.filter(function (a) { return !votedIds[a.id]; });
@@ -424,6 +453,7 @@ var handleVote = function (activity, choice) {
                 key={activity.id}
                 activity={activity}
                 vote={null}
+                closure={closures["id:" + activity.id] || closures["name:" + String(activity.name).trim().toLowerCase()] || null}
                 onVote={function (choice) {
                   handleVote(activity, choice);
                 }}

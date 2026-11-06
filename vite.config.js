@@ -4,6 +4,11 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  // The bundle is served from /dist/, so lazily loaded chunks and the images
+  // CSS refers to (e.g. Leaflet's) are linked relative to it.
+  experimental: {
+    renderBuiltUrl() { return { relative: true }; },
+  },
   build: {
     outDir: 'public/dist',
     emptyOutDir: true,

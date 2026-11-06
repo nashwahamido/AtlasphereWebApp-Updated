@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import '../styles/itinerary-builder.css';
+import { weatherIcon, weatherLabel, dayLabel, temp, busyText, getJson, destinationUrl, isoFromParts, placesByName } from './destinationInfo';
 
 const HOURS = ['08.00','09.00','10.00','11.00','12.00','13.00','14.00','15.00','16.00','17.00','18.00','19.00','20.00','21.00','22.00','23.00','00.00','01.00','02.00'];
 const DAY_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -205,6 +206,36 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
       return { index: i, num: date.getDate(), month: date.getMonth(), year: date.getFullYear(), label: DAY_NAMES[date.getDay()] };
     });
   }, [rangeStart, rangeEnd, actualDays, rangeYear, rangeMonth]);
+
+  // ── Planning hints: weather, holidays, busy days and closures per day ──
+  const tripRange = useMemo(() => {
+    if (!weekDays.length) return null;
+    const first = weekDays[0], last = weekDays[weekDays.length - 1];
+    return { start: isoFromParts(first.year, first.month, first.num), end: isoFromParts(last.year, last.month, last.num) };
+  }, [weekDays]);
+  const [destInfo, setDestInfo] = useState(null);
+  const [destPlaces, setDestPlaces] = useState(null);
+  useEffect(() => {
+    if (!gid || !isActive || !tripRange) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      getJson(destinationUrl(gid, null, tripRange)).then(d => { if (!cancelled) setDestInfo(d); }).catch(() => {});
+      getJson(destinationUrl(gid, 'places', tripRange)).then(d => { if (!cancelled) setDestPlaces(d); }).catch(() => {});
+    }, 400); // wait for the date picking to settle
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [gid, isActive, tripRange]);
+  const dayInfoByDate = useMemo(() => {
+    const m = {};
+    if (destInfo && destInfo.days) destInfo.days.forEach(d => { m[d.date] = d; });
+    return m;
+  }, [destInfo]);
+  const placeByName = useMemo(() => placesByName(destPlaces && destPlaces.places), [destPlaces]);
+  const dateOfDay = (i) => { const d = weekDays[i]; return d ? isoFromParts(d.year, d.month, d.num) : null; };
+  const closedPlace = (name, dayIdx) => {
+    const p = placeByName[String(name || '').trim().toLowerCase()];
+    const date = dateOfDay(dayIdx);
+    return p && date && p.closedOn.indexOf(date) !== -1 ? p : null;
+  };
 
   const [allBlocks, setAllBlocks] = useState({});
   const dayBlocks = allBlocks[activeDay] || {};
@@ -704,10 +735,14 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             {weekDays.map((d, i) => (
               <div key={i}
                 ref={activeDay === i ? activeDayRef : null}
-                className={`ib-week__day${activeDay === i ? ' ib-week__day--active' : ''}${daysWithBlocks[i] ? ' ib-week__day--has-plans' : ''}`}
+                className={`ib-week__day${activeDay === i ? ' ib-week__day--active' : ''}${daysWithBlocks[i] ? ' ib-week__day--has-plans' : ''}${(dayInfoByDate[dateOfDay(i)] || {}).holidays && dayInfoByDate[dateOfDay(i)].holidays.length ? ' ib-week__day--holiday' : ''}`}
                 onClick={() => setActiveDay(i)}>
                 <span className="ib-week__num">{d.num}</span>
                 <span className="ib-week__label">{d.label}</span>
+                {(() => {
+                  const info = dayInfoByDate[dateOfDay(i)];
+                  return info && info.weather ? <span className="ib-week__wx" title={dayLabel(info.weather)}>{weatherIcon(info.weather.kind)} {temp(info.weather.max)}</span> : null;
+                })()}
               </div>
             ))}
           </div>
@@ -716,6 +751,21 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             Select a start date on the calendar
           </div>
         )}
+        {(() => {
+          const info = dayInfoByDate[dateOfDay(activeDay)];
+          if (!info) return null;
+          const w = info.weather;
+          const planned = Object.values(dayBlocks).filter(b => b && closedPlace(b.name || b.text, activeDay)).length;
+          const busy = info.busy && info.busy.level !== 'normal' ? busyText(info.busy) : '';
+          return (
+            <div className="ib-dayhint">
+              {w && <span>{weatherIcon(w.kind)} <b>{dayLabel(w)}</b> {temp(w.max)} / {temp(w.min)}{typeof w.rainChance === 'number' ? ' · 💧 ' + w.rainChance + '%' : ''}{w.source === 'typical' ? ' (typical)' : ''}</span>}
+              {info.holidays.map(h => <span key={h.name} className="ib-dayhint__holiday">🎉 {h.name}{h.regional ? ' (some regions)' : ''}</span>)}
+              {busy && <span>👥 {busy}: busier than usual</span>}
+              {planned > 0 && <span>⚠️ {planned} planned {planned === 1 ? 'place is' : 'places are'} closed</span>}
+            </div>
+          );
+        })()}
         <h4 className="ib-schedule__title">{scheduleTitle}</h4>
         {tapMode && dragInfo && (
           <div className="ib-tap-banner">
@@ -767,7 +817,8 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
                         <span className="ib-block__text" style={{ cursor: 'pointer' }}
                           onClick={e => { e.stopPropagation(); selectForTap({ type: 'block', id: block.id, name: block.name || block.text, from: h, duration: block.duration || 1, color: block.color || '#E8933A' }); }}
                           onTouchStart={e => startTouchDrag({ type: 'block', id: block.id, name: block.name || block.text, from: h, duration: block.duration || 1, color: block.color || '#E8933A' }, e)}>
-                          {block.name || block.text}</span>
+                          {block.name || block.text}
+                          {closedPlace(block.name || block.text, activeDay) && <span className="ib-closed-badge" title={closedPlace(block.name || block.text, activeDay).hours || ''}>Closed this day</span>}</span>
                         <div className="ib-block__controls">
                           <button className="ib-block__cmt-btn" title="Add or view notes"
                             onClick={e => { e.stopPropagation(); openComments(activeDay, h, block.name || block.text); }}>

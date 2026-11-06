@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageIcon, DiscoverIcon, CalendarIcon } from './Icons';
+import { MessageIcon, DiscoverIcon, CalendarIcon, MapIcon } from './Icons';
 import '../styles/tab-switcher.css';
 
 var TabSwitcher = function(props) {
@@ -7,9 +7,10 @@ var TabSwitcher = function(props) {
   var onChange = props.onChange;
 
   var tabs = [
-    { id: 'chat', Icon: MessageIcon },
-    { id: 'discover', Icon: DiscoverIcon },
-    { id: 'itinerary', Icon: CalendarIcon },
+    { id: 'chat', Icon: MessageIcon, label: 'Chat' },
+    { id: 'discover', Icon: DiscoverIcon, label: 'Recommendations' },
+    { id: 'itinerary', Icon: CalendarIcon, label: 'Itinerary' },
+    { id: 'destination', Icon: MapIcon, label: 'Destination: weather, holidays and crowds' },
   ];
 
   return React.createElement('div', { className: 'ts' },
@@ -19,6 +20,9 @@ var TabSwitcher = function(props) {
         return React.createElement('button', {
           key: t.id,
           className: 'ts__btn' + (isActive ? ' ts__btn--active' : ''),
+          'aria-label': t.label,
+          title: t.label,
+          'aria-pressed': isActive,
           onClick: function() { if (onChange) onChange(t.id); }
         },
           React.createElement(t.Icon, { bold: isActive, color: isActive ? '#3B5F8A' : 'var(--ib-text-muted, #999)' })
