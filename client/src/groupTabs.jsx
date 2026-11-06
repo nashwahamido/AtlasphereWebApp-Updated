@@ -8,6 +8,9 @@ import ChatOverlay from './components/ChatOverlay';
 import ItineraryBuilder from './components/ItineraryBuilder';
 import VotingSystem from './components/VotingSystem';
 
+// The Destination tab brings in the map library, so it loads only when opened.
+var DestinationTab = React.lazy(function() { return import('./components/DestinationTab'); });
+
 import './styles/tab-switcher.css';
 import './styles/sidebar.css';
 import './styles/chatbox.css';
@@ -15,6 +18,7 @@ import './styles/chat-overlay.css';
 import './styles/itinerary-builder.css';
 import './styles/voting-system.css';
 import './styles/group-mobile.css';
+import './styles/destination.css';
 
 var mount = document.getElementById('group-tabs-root');
 
@@ -115,6 +119,22 @@ if (mount) {
           }),
           React.createElement(ChatOverlay, Object.assign({
             key: 'overlay-itinerary-' + (activeGroup.id || groupId),
+            notificationsMuted: false
+          }, chatProps))
+        ),
+
+        // Destination tab — weather, local time, holidays, crowds and closures
+        activeTab === 'destination' && React.createElement('div', { className: 'gp-tab-with-overlay' },
+          React.createElement(React.Suspense, { fallback: React.createElement('div', { className: 'dt' }, React.createElement('div', { className: 'dt-card dt-loading' }, 'Loading…')) },
+            React.createElement(DestinationTab, {
+              key: 'dest-' + (activeGroup.id || groupId),
+              groupId: activeGroup.id || groupId,
+              destination: activeGroup.destination || groupDestination,
+              flag: activeGroup.flag || groupFlag
+            })
+          ),
+          React.createElement(ChatOverlay, Object.assign({
+            key: 'overlay-destination-' + (activeGroup.id || groupId),
             notificationsMuted: false
           }, chatProps))
         )

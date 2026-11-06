@@ -966,6 +966,7 @@ app.post("/groups/save-activities", requireAuth, (req, res) => {
 // ── GROUPS / USERS ROUTES ────────────────────────────────────────────────
 app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVerificationEmail, sendEmail, generateCode }));
 app.use(require("./routes/friends")(connection));
+app.use(require("./routes/destination")(connection));
 app.use("/groups", require("./routes/groups"));
 app.use("/users", require("./routes/users"));
 

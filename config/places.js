@@ -101,6 +101,14 @@ function looksLikeCode(name) {
   return false;
 }
 
+// OpenStreetMap opening hours ("Mo-Fr 09:00-18:00; Nov-Mar off"), when the
+// place has them. Geoapify passes them through in a couple of places.
+function openingHoursOf(p) {
+  var raw = (p && p.datasource && p.datasource.raw) || {};
+  var v = p.opening_hours || raw.opening_hours || "";
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
 // ── Pexels photos ──────────────────────────────────────────────────────
 function pickSrc(photo) {
   if (!photo || !photo.src) return null;
@@ -164,7 +172,22 @@ async function attachPexelsImages(items, city) {
   return items;
 }
 
+// Places barely change, so each city's list is kept for an hour. This serves
+// both the recommendations and the Destination tab without spending the
+// Geoapify quota twice.
+var PLACES_TTL_MS = 60 * 60 * 1000;
+var placesCache = new Map();
+
 async function fetchPlaces(city) {
+  var key = String(city || "").trim().toLowerCase();
+  var hit = placesCache.get(key);
+  if (hit && Date.now() - hit.at < PLACES_TTL_MS) return hit.features;
+  var features = await fetchPlacesUncached(city);
+  if (features.length) placesCache.set(key, { at: Date.now(), features: features });
+  return features;
+}
+
+async function fetchPlacesUncached(city) {
   var apiKey = (process.env.GEOAPIFY_API_KEY || "").trim();
   if (!apiKey) {
     console.error("Geoapify not configured — set GEOAPIFY_API_KEY.");
@@ -222,6 +245,9 @@ async function getRecommendations(city, preferences) {
         image: imageForTags(tags),
         rating: null, // Geoapify does not provide user ratings
         location: city,
+        lat: typeof p.lat === "number" ? p.lat : null,
+        lon: typeof p.lon === "number" ? p.lon : null,
+        openingHours: openingHoursOf(p),
       };
     });
 
@@ -237,4 +263,4 @@ async function getRecommendations(city, preferences) {
   return attachPexelsImages(ranked, city);
 }
 
-module.exports = { getRecommendations, inferTags };
+module.exports = { getRecommendations, inferTags, fetchPlaces, looksLikeCode, describe, openingHoursOf };
