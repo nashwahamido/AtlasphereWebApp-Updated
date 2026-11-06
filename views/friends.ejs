@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('partials/head-meta') %>
+  <title>Friends - Atlasphere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<%- include('partials/navbar', { user: typeof user !== 'undefined' ? user : null }) %>
+
+<main class="fr-page">
+  <h1 class="fr-title">Friends</h1>
+
+  <% if (flash) { %><p class="fr-flash" role="alert"><%= flash %></p><% } %>
+
+  <form class="fr-search" action="/friends" method="get" role="search">
+    <label for="frSearch" class="fr-visually-hidden">Find people</label>
+    <input id="frSearch" type="search" name="q" value="<%= q %>" placeholder="Find people by name or email" autocomplete="off" minlength="2" maxlength="100">
+    <button type="submit" class="fr-btn fr-btn--primary">Search</button>
+  </form>
+
+  <% var here = '/friends' + (q ? '?q=' + encodeURIComponent(q) : ''); %>
+
+  <% if (results) { %>
+    <section class="fr-section" aria-labelledby="frResults">
+      <h2 class="fr-section__title" id="frResults">Results for “<%= q %>”</h2>
+      <% if (results.length) { %>
+        <ul class="fr-list">
+          <% results.forEach(function(p) { %>
+            <%- include('partials/friend-row', { p: p, state: p.relationship, next: here }) %>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <p class="fr-empty"><%= q.length < 2 ? 'Type at least 2 characters.' : 'No one found. Try their full name, or the exact email they signed up with.' %></p>
+      <% } %>
+    </section>
+  <% } %>
+
+  <% if (incoming.length) { %>
+    <section class="fr-section" aria-labelledby="frRequests">
+      <h2 class="fr-section__title" id="frRequests">Friend requests <span class="fr-count"><%= incoming.length %></span></h2>
+      <ul class="fr-list">
+        <% incoming.forEach(function(p) { %>
+          <%- include('partials/friend-row', { p: p, state: 'incoming', next: here }) %>
+        <% }) %>
+      </ul>
+    </section>
+  <% } %>
+
+  <section class="fr-section" aria-labelledby="frFriends">
+    <h2 class="fr-section__title" id="frFriends">Your friends <span class="fr-count"><%= friends.length %></span></h2>
+    <% if (friends.length) { %>
+      <ul class="fr-list">
+        <% friends.forEach(function(p) { %>
+          <%- include('partials/friend-row', { p: p, state: 'friends', next: here }) %>
+        <% }) %>
+      </ul>
+    <% } else { %>
+      <p class="fr-empty">No friends yet. Search for the people you travel with, or tap a name in a group chat to see their profile.</p>
+    <% } %>
+  </section>
+
+  <% if (outgoing.length) { %>
+    <section class="fr-section" aria-labelledby="frSent">
+      <h2 class="fr-section__title" id="frSent">Sent requests <span class="fr-count"><%= outgoing.length %></span></h2>
+      <ul class="fr-list">
+        <% outgoing.forEach(function(p) { %>
+          <%- include('partials/friend-row', { p: p, state: 'outgoing', next: here }) %>
+        <% }) %>
+      </ul>
+    </section>
+  <% } %>
+</main>
+
+<%- include('partials/footer') %>
+<script>var s=localStorage.getItem('atlasphere-theme');if(s)document.documentElement.setAttribute('data-theme',s);</script>
+</body>
+</html>

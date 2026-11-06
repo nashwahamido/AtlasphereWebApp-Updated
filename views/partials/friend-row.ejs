@@ -1,0 +1,15 @@
+<%
+  /* One person in a list. Locals: p ({id, username, profilePictureUrl}), state, next. */
+  var _initial = String(p.username || '?').trim().charAt(0).toUpperCase();
+%>
+<li class="fr-row">
+  <a class="fr-person" href="/people/<%= p.id %>">
+    <% if (p.profilePictureUrl) { %>
+      <img class="fr-avatar" src="<%= p.profilePictureUrl %>" alt="" loading="lazy">
+    <% } else { %>
+      <span class="fr-avatar fr-avatar--initial" aria-hidden="true"><%= _initial %></span>
+    <% } %>
+    <span class="fr-name"><%= p.username %></span>
+  </a>
+  <%- include('friend-actions', { id: p.id, state: state, next: next, name: p.username, size: 'sm' }) %>
+</li>

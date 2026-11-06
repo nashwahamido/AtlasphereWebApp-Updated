@@ -45,6 +45,11 @@ router.post('/delete', (req, res) => {
     return res.redirect('/settings');
   }
 
+  // Remove their friendships first (the table may not exist yet on an old database).
+  connection.query(
+    'DELETE FROM tbl_friendships WHERE requesterId = ? OR addresseeId = ?',
+    [userId, userId],
+    function() {
   connection.query(
     'DELETE FROM tbl_users WHERE IDuser = ?',
     [userId],
@@ -57,6 +62,8 @@ router.post('/delete', (req, res) => {
       req.session.destroy(() => {
         res.render('account-deleted', { user: null });
       });
+    }
+  );
     }
   );
 });

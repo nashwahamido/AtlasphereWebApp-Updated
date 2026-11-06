@@ -1,0 +1,84 @@
+<%
+  /* Travel summary shared by your profile (/profile) and someone else's (/people/:id).
+     Locals: visited, planning (arrays of {code,name} or codes), cities (strings),
+     groupCount (number), friendCount (number, or null to hide the tile),
+     own (true on your own profile: Edit / + Trip shortcuts and prompts), name (whose profile). */
+  var _visited = visited || [], _planning = planning || [], _cities = cities || [];
+  var _groups = groupCount || 0;
+  var _showFriends = typeof friendCount === 'number';
+  function cCode(c) { return String((c && c.code) || c || '').toLowerCase(); }
+  function cName(c) { return (c && c.name) || String(c || '').toUpperCase(); }
+%>
+<div class="pf-stats<%= _showFriends ? ' pf-stats--four' : '' %>">
+  <div class="pf-stat">
+    <span class="pf-stat__num"><%= _visited.length %></span>
+    <span class="pf-stat__label"><%= _visited.length === 1 ? 'Country visited' : 'Countries visited' %></span>
+  </div>
+  <div class="pf-stat">
+    <span class="pf-stat__num"><%= _planning.length %></span>
+    <span class="pf-stat__label">Planning to visit</span>
+  </div>
+  <div class="pf-stat">
+    <span class="pf-stat__num"><%= _groups %></span>
+    <span class="pf-stat__label"><%= _groups === 1 ? 'Group' : 'Groups' %></span>
+  </div>
+  <% if (_showFriends) { %>
+    <a class="pf-stat pf-stat--link" href="<%= own ? '/friends' : '#' %>"<% if (!own) { %> aria-disabled="true" tabindex="-1"<% } %>>
+      <span class="pf-stat__num"><%= friendCount %></span>
+      <span class="pf-stat__label"><%= friendCount === 1 ? 'Friend' : 'Friends' %></span>
+    </a>
+  <% } %>
+</div>
+
+<div class="pf-sections">
+  <section class="pf-card" aria-labelledby="pfVisited">
+    <div class="pf-card__head">
+      <h2 class="pf-card__title" id="pfVisited">Visited</h2>
+      <% if (own) { %><a href="/settings" class="pf-card__action">Edit</a><% } %>
+    </div>
+    <% if (_visited.length > 0) { %>
+      <ul class="pf-countries">
+        <% _visited.forEach(function(country) { %>
+          <li class="pf-country" title="<%= cName(country) %>">
+            <span class="fi fi-<%= cCode(country) %> pf-country__flag" aria-hidden="true"></span>
+            <span class="pf-country__name"><%= cName(country) %></span>
+          </li>
+        <% }) %>
+      </ul>
+    <% } else if (own) { %>
+      <p class="pf-empty">No countries yet. <a href="/settings">Add the places you've been</a></p>
+    <% } else { %>
+      <p class="pf-empty"><%= name %> hasn't added any countries yet.</p>
+    <% } %>
+
+    <% if (_cities.length > 0) { %>
+      <h3 class="pf-card__sub">Cities</h3>
+      <ul class="pf-cities">
+        <% _cities.forEach(function(city) { %>
+          <li class="pf-city"><%= city %></li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </section>
+
+  <section class="pf-card" aria-labelledby="pfPlanning">
+    <div class="pf-card__head">
+      <h2 class="pf-card__title" id="pfPlanning">Planning to visit</h2>
+      <% if (own) { %><a href="/groups/create/country" class="pf-card__action">+ Trip</a><% } %>
+    </div>
+    <% if (_planning.length > 0) { %>
+      <ul class="pf-countries">
+        <% _planning.forEach(function(country) { %>
+          <li class="pf-country" title="<%= cName(country) %>">
+            <span class="fi fi-<%= cCode(country) %> pf-country__flag" aria-hidden="true"></span>
+            <span class="pf-country__name"><%= cName(country) %></span>
+          </li>
+        <% }) %>
+      </ul>
+    <% } else if (own) { %>
+      <p class="pf-empty">No trips yet. <a href="/groups/create/country">Plan your first trip</a></p>
+    <% } else { %>
+      <p class="pf-empty">No trips planned yet.</p>
+    <% } %>
+  </section>
+</div>

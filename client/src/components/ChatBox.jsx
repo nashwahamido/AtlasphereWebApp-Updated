@@ -387,7 +387,9 @@ var ChatBox = function(props) {
         return React.createElement('div', { key: m.id, className: 'cb__row' + (isSelf ? ' cb__row--self' : '') },
           !isSelf && renderAvatar(avatarUrl, '#E8933A', ''),
           React.createElement('div', { className: 'cb__bubble-group' + (isSelf ? ' cb__bubble-group--self' : '') },
-            React.createElement('span', { className: 'cb__sender' + (isSelf ? ' cb__sender--self' : '') }, isSelf ? userName : (m.userName || m.user)),
+            (!isSelf && /^\d+$/.test(String(m.userId || '')))
+              ? React.createElement('a', { className: 'cb__sender cb__sender--link', href: '/people/' + m.userId, title: 'View profile' }, m.userName || m.user)
+              : React.createElement('span', { className: 'cb__sender' + (isSelf ? ' cb__sender--self' : '') }, isSelf ? userName : (m.userName || m.user)),
             React.createElement('div', {
               className: 'cb__bubble' + (isSelf ? ' cb__bubble--self' : '') + (shareMatch ? ' cb__bubble--share' : '')
             }, bubbleContent),
