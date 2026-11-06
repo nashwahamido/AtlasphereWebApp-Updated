@@ -6,6 +6,8 @@ const express = require("express");
 const { check, validationResult } = require("express-validator");
 const tokens = require("../config/tokens");
 const { verifyPassword, upgradeToHash } = require("../config/passwords");
+const createFriends = require("../services/friends");
+const { FriendError } = require("../services/friends");
 
 const ACCESS_TTL = 60 * 60 * 24 * 30; // 30 days
 const PENDING_TTL = 60 * 30;          // 30 minutes, same as the emailed code
@@ -13,6 +15,7 @@ const PENDING_TTL = 60 * 30;          // 30 minutes, same as the emailed code
 module.exports = function createMobileRouter(deps) {
   const { connection, bcrypt, sendVerificationEmail, sendEmail, generateCode } = deps;
   const db = connection.promise();
+  const friends = createFriends(db);
   const router = express.Router();
 
   // ── helpers ──────────────────────────────────────────────────────────
@@ -249,6 +252,41 @@ module.exports = function createMobileRouter(deps) {
   // ── CURRENT USER ─────────────────────────────────────────────────────
   router.get("/me", requireMobileAuth, (req, res) => {
     res.json({ user: publicUser(req.mobileUser) });
+  });
+
+  // ── FRIENDS ──────────────────────────────────────────────────────────
+  // Same rules as the website (services/friends.js).
+  function friendRoute(handler) {
+    return async (req, res) => {
+      try {
+        res.json(await handler(req));
+      } catch (err) {
+        if (err instanceof FriendError) return fail(res, err.status, err.message);
+        console.error("Mobile friends error:", err.message);
+        fail(res, 500, "Something went wrong. Please try again.");
+      }
+    };
+  }
+  const me = (req) => req.mobileUser.IDuser;
+
+  router.get("/friends", requireMobileAuth, friendRoute(async (req) => {
+    const [list, requests] = await Promise.all([friends.listFriends(me(req)), friends.listRequests(me(req))]);
+    return { friends: list, incoming: requests.incoming, outgoing: requests.outgoing };
+  }));
+  router.get("/people/search", requireMobileAuth, friendRoute(async (req) => ({ results: await friends.search(me(req), req.query.q) })));
+  router.get("/people/:id", requireMobileAuth, friendRoute(async (req) => ({ person: await friends.profile(me(req), req.params.id) })));
+
+  const ACTIONS = {
+    request: (m, id) => friends.sendRequest(m, id),
+    accept: (m, id) => friends.accept(m, id),
+    decline: (m, id) => friends.decline(m, id),
+    cancel: (m, id) => friends.cancel(m, id),
+    remove: (m, id) => friends.unfriend(m, id),
+  };
+  router.post("/people/:id/:action", requireMobileAuth, async (req, res, next) => {
+    const action = ACTIONS[req.params.action];
+    if (!action) return next();
+    return friendRoute(async () => ({ relationship: await action(me(req), req.params.id) }))(req, res);
   });
 
   router.use((req, res) => fail(res, 404, "Not found."));

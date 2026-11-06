@@ -22,6 +22,8 @@
 .cb__bubble-group { display: flex; flex-direction: column; gap: 2px; max-width: 60%; }
 .cb__sender { font-size: 11px; font-weight: 600; color: var(--text-secondary, #888); padding-left: 4px; }
 .cb__sender--self { text-align: right; padding-left: 0; padding-right: 4px; }
+.cb__sender--link { text-decoration: none; }
+.cb__sender--link:hover { text-decoration: underline; color: #E8933A; }
 .cb__bubble-group--self { align-items: flex-end; }
 
 .cb__bubble { padding: 10px 16px; border-radius: 14px 14px 14px 4px; background: #3B5F8A; color: #fff; font-size: 14px; line-height: 1.5; }

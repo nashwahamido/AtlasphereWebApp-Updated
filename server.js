@@ -116,6 +116,7 @@ connection.getConnection((err, conn) => {
 
 // Make DB connection accessible to route files
 app.set('db', connection);
+const friendsService = require("./services/friends")(connection.promise());
 
 // ── SESSION CONFIGURATION (stored in MySQL so sessions survive restarts) ──
 const sessionConfig = require("./config/session");
@@ -876,7 +877,11 @@ app.get("/profile", requireAuth, (req, res) => {
           user.planningCountries = planningFlags;
           user.groups_created = groupCount;
 
-          res.render("profile", { user: user, image: image });
+          friendsService.countFriends(userId)
+            .catch(function() { return null; })
+            .then(function(friendCount) {
+              res.render("profile", { user: user, image: image, friendCount: friendCount });
+            });
         }
       );
     }
@@ -960,6 +965,7 @@ app.post("/groups/save-activities", requireAuth, (req, res) => {
 
 // ── GROUPS / USERS ROUTES ────────────────────────────────────────────────
 app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVerificationEmail, sendEmail, generateCode }));
+app.use(require("./routes/friends")(connection));
 app.use("/groups", require("./routes/groups"));
 app.use("/users", require("./routes/users"));
 
@@ -1260,7 +1266,18 @@ app.get("/api/notifications", requireAuth, (req, res) => {
           results.push(n);
         }
       });
-      res.json(results);
+      // Friend requests / acceptances live in tbl_friendships; merge them in.
+      friendsService.notifications(userId)
+        .then(function(friendNotes) {
+          var all = results.concat(friendNotes).sort(function(a, b) {
+            return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+          });
+          res.json(all.slice(0, 50));
+        })
+        .catch(function(fErr) {
+          console.error("Friend notif load error:", fErr.message);
+          res.json(results);
+        });
     }
   );
 });
@@ -1272,7 +1289,10 @@ app.get("/api/notifications/count", requireAuth, (req, res) => {
     "SELECT COUNT(*) as cnt FROM tbl_notifications WHERE userId = ? AND isRead = 0",
     [userId],
     function(err, rows) {
-      res.json({ count: (!err && rows && rows[0]) ? rows[0].cnt : 0 });
+      var base = (!err && rows && rows[0]) ? Number(rows[0].cnt) : 0;
+      friendsService.unseenCount(userId)
+        .then(function(n) { res.json({ count: base + n }); })
+        .catch(function() { res.json({ count: base }); });
     }
   );
 });
@@ -1281,7 +1301,9 @@ app.get("/api/notifications/count", requireAuth, (req, res) => {
 app.post("/api/notifications/read", requireAuth, (req, res) => {
   var userId = req.session.user.id;
   connection.query("UPDATE tbl_notifications SET isRead = 1 WHERE userId = ?", [userId], function(err) {
-    res.json({ success: !err });
+    friendsService.markSeen(userId)
+      .catch(function(fErr) { console.error("Friend notif mark-read error:", fErr.message); })
+      .then(function() { res.json({ success: !err }); });
   });
 });
 
@@ -1600,6 +1622,11 @@ server.listen(PORT, '0.0.0.0', function() {
       else { console.log("Widened tbl_activity_votes.activityImage to VARCHAR(1024)"); }
     }
   );
+
+  // Auto-migrate: friendships table (see services/friends.js).
+  friendsService.ensureSchema()
+    .then(function() { console.log("Ensured tbl_friendships table exists"); })
+    .catch(function(err) { console.error("Migration note (friendships):", err.message); });
 
   // Auto-migrate: create the itinerary comments table if it doesn't exist yet.
   connection.query(

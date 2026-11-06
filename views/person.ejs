@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('partials/head-meta') %>
+  <title><%= person.username %> - Atlasphere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css"/>
+</head>
+<body>
+<%- include('partials/navbar', { user: typeof user !== 'undefined' ? user : null }) %>
+
+<main class="profile-main person-main">
+  <% var initial = String(person.username || '?').trim().charAt(0).toUpperCase(); %>
+  <div class="person-avatar">
+    <% if (person.profilePictureUrl) { %>
+      <img src="<%= person.profilePictureUrl %>" alt="<%= person.username %>">
+    <% } else { %>
+      <span aria-hidden="true"><%= initial %></span>
+    <% } %>
+  </div>
+  <h1 class="person-name"><%= person.username %></h1>
+  <p class="person-sub"><%= person.friendCount %> <%= person.friendCount === 1 ? 'friend' : 'friends' %></p>
+
+  <% if (flash) { %><p class="fr-flash" role="alert"><%= flash %></p><% } %>
+  <% if (person.relationship === 'incoming') { %>
+    <p class="person-note"><%= person.username %> sent you a friend request.</p>
+  <% } %>
+  <div class="person-actions">
+    <%- include('partials/friend-actions', { id: person.id, state: person.relationship, next: '/people/' + person.id, name: person.username, size: 'lg' }) %>
+  </div>
+
+  <% if (person.canSeeDetails) { %>
+    <%- include('partials/travel-summary', {
+      visited: person.visitedCountries, planning: person.planningCountries, cities: person.visitedCities,
+      groupCount: person.tripCount, friendCount: null, own: false, name: person.username
+    }) %>
+  <% } else { %>
+    <div class="pf-card person-locked">
+      <p>Be friends with <strong><%= person.username %></strong> to see where they've travelled and where they're going next.</p>
+    </div>
+  <% } %>
+</main>
+
+<%- include('partials/footer') %>
+<script>var s=localStorage.getItem('atlasphere-theme');if(s)document.documentElement.setAttribute('data-theme',s);</script>
+</body>
+</html>

@@ -1427,3 +1427,60 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 [data-theme="light"] .notif-dropdown__list {
   scrollbar-color: rgba(0,0,0,0.15) transparent;
 }
+/* ===== FRIENDS ===== */
+.fr-page { max-width: 760px; margin: 48px auto; padding: 0 20px; }
+.fr-title { font-size: 2.4rem; font-weight: 800; color: var(--text); margin-bottom: 20px; }
+.fr-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.fr-flash { background: rgba(232,147,58,0.12); color: var(--text); border: 1px solid rgba(232,147,58,0.4); border-radius: 12px; padding: 10px 14px; font-size: 14px; margin: 0 0 16px; }
+.fr-search { display: flex; gap: 10px; margin-bottom: 28px; }
+.fr-search input { flex: 1; min-width: 0; padding: 12px 16px; border-radius: 999px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 15px; font-family: inherit; }
+.fr-search input:focus { outline: 2px solid #E8933A; outline-offset: 1px; }
+.fr-section { margin-bottom: 28px; }
+.fr-section__title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.fr-count { font-size: 12px; font-weight: 700; color: var(--text-secondary); background: var(--pill-bg); border-radius: 999px; padding: 2px 9px; }
+.fr-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; }
+.fr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card-bg); }
+.fr-person { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--text); }
+.fr-person:hover .fr-name { text-decoration: underline; }
+.fr-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.fr-avatar--initial { display: inline-flex; align-items: center; justify-content: center; background: #3B5F8A; color: #fff; font-weight: 800; font-size: 18px; }
+.fr-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-empty { color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.fr-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.fr-actions form { margin: 0; }
+.fr-btn { border: none; border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.fr-btn--primary { background: #E8933A; color: #fff; }
+.fr-btn--primary:hover { background: #D4822F; }
+.fr-btn--ghost { background: var(--pill-bg); color: var(--text); }
+.fr-btn--ghost:hover { filter: brightness(0.95); }
+.fr-btn--lg { padding: 12px 26px; font-size: 15px; }
+.fr-status { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.fr-status--friends { color: #1B7F4B; }
+
+.person-main { margin-top: 40px; }
+.person-avatar { width: 140px; height: 140px; border-radius: 50%; margin: 0 auto 16px; overflow: hidden; background: #3B5F8A; display: flex; align-items: center; justify-content: center; }
+.person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.person-avatar span { color: #fff; font-size: 56px; font-weight: 800; }
+.person-name { font-size: 2rem !important; margin-bottom: 4px !important; }
+.person-sub { color: var(--text-secondary); font-size: 14px; margin-bottom: 18px; }
+.person-note { color: var(--text); font-size: 15px; margin-bottom: 10px; }
+.person-actions { display: flex; justify-content: center; margin-bottom: 28px; }
+.person-actions .fr-actions { justify-content: center; }
+.person-locked { max-width: 520px; margin: 0 auto; text-align: center; color: var(--text-secondary); line-height: 1.5; }
+
+/* Profile stat tiles: a 4th "Friends" tile on your own profile. */
+.pf-stats--four { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 800px; }
+.pf-stat--link { text-decoration: none; transition: filter 0.15s; }
+.pf-stat--link:hover { filter: brightness(0.96); }
+.pf-stat--link[aria-disabled="true"] { pointer-events: none; }
+
+@media (max-width: 600px) {
+  .fr-page { margin: 24px auto; padding: 0 16px; }
+  .fr-title { font-size: 1.9rem; }
+  .fr-row { flex-wrap: wrap; }
+  .fr-row .fr-actions { margin-left: 56px; justify-content: flex-start; }
+  .person-avatar { width: 112px; height: 112px; }
+  .person-avatar span { font-size: 44px; }
+  .person-name { font-size: 1.6rem !important; }
+  .pf-stats--four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

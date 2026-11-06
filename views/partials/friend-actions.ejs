@@ -1,0 +1,25 @@
+<%
+  /* Buttons for one relationship state. Locals: id (their user id), state
+     ('none' | 'outgoing' | 'incoming' | 'friends'), next (path to come back to),
+     name (their name), size ('sm' in lists, 'lg' on a profile). */
+  var _cls = size === 'lg' ? ' fr-btn--lg' : '';
+%>
+<div class="fr-actions">
+  <% if (state === 'none') { %>
+    <form method="post" action="/friends/<%= id %>/request"><input type="hidden" name="next" value="<%= next %>">
+      <button class="fr-btn fr-btn--primary<%= _cls %>" type="submit">Add friend</button></form>
+  <% } else if (state === 'outgoing') { %>
+    <span class="fr-status">Request sent</span>
+    <form method="post" action="/friends/<%= id %>/cancel"><input type="hidden" name="next" value="<%= next %>">
+      <button class="fr-btn fr-btn--ghost<%= _cls %>" type="submit">Cancel</button></form>
+  <% } else if (state === 'incoming') { %>
+    <form method="post" action="/friends/<%= id %>/accept"><input type="hidden" name="next" value="<%= next %>">
+      <button class="fr-btn fr-btn--primary<%= _cls %>" type="submit">Accept</button></form>
+    <form method="post" action="/friends/<%= id %>/decline"><input type="hidden" name="next" value="<%= next %>">
+      <button class="fr-btn fr-btn--ghost<%= _cls %>" type="submit">Decline</button></form>
+  <% } else if (state === 'friends') { %>
+    <span class="fr-status fr-status--friends">✓ Friends</span>
+    <form method="post" action="/friends/<%= id %>/remove" onsubmit="return confirm('Remove <%= String(name).replace(/[\\'\"<>]/g, '') %> from your friends?');"><input type="hidden" name="next" value="<%= next %>">
+      <button class="fr-btn fr-btn--ghost<%= _cls %>" type="submit">Unfriend</button></form>
+  <% } %>
+</div>

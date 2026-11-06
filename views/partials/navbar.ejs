@@ -10,6 +10,7 @@
     <% if (typeof user !== 'undefined' && user) { %>
       <a href="/" class="nav-link">Home</a>
       <a href="/groups" class="nav-link nav-link--groups">Groups<span id="navbar-groups-badge" class="navbar-groups-badge"></span></a>
+      <a href="/friends" class="nav-link">Friends</a>
       <a href="/profile" class="nav-link">Profile</a>
       <a href="/settings" class="nav-link">Settings</a>
     <% } %>
@@ -58,6 +59,7 @@
   <div class="navbar-mobile-menu" id="navbarMobileMenu">
     <a href="/" class="navbar-mobile-link">Home</a>
     <a href="/groups" class="navbar-mobile-link">Groups</a>
+    <a href="/friends" class="navbar-mobile-link">Friends</a>
     <a href="/profile" class="navbar-mobile-link">Profile</a>
     <a href="/settings" class="navbar-mobile-link">Settings</a>
     <a href="/auth/logout" class="navbar-mobile-link navbar-mobile-link--signout">Sign out</a>
@@ -112,13 +114,19 @@
         data.slice(0, 20).forEach(function(n) {
           var item = document.createElement('div');
           item.className = 'notif-item' + (n.isRead ? '' : ' notif-item--unread');
-          var icon = n.type === 'vote-summary' ? '📊' : n.type === 'invite' ? '✉️' : '👍';
-          item.innerHTML = '<span class="notif-item__icon">' + icon + '</span>' +
-            '<div class="notif-item__body">' +
-              '<div class="notif-item__msg">' + n.message + '</div>' +
-              '<div class="notif-item__meta">' + (n.groupName || '') + ' · ' + timeAgo(n.createdAt) + '</div>' +
-            '</div>';
+          var icon = n.type === 'vote-summary' ? '📊' : n.type === 'invite' ? '✉️'
+            : n.type === 'friend-request' ? '👋' : n.type === 'friend-accepted' ? '🤝' : '👍';
+          // Built with textContent, never innerHTML: messages contain other
+          // people's names, which must never be treated as HTML.
+          var iconEl = document.createElement('span'); iconEl.className = 'notif-item__icon'; iconEl.textContent = icon;
+          var body = document.createElement('div'); body.className = 'notif-item__body';
+          var msg = document.createElement('div'); msg.className = 'notif-item__msg'; msg.textContent = n.message || '';
+          var meta = document.createElement('div'); meta.className = 'notif-item__meta';
+          meta.textContent = (n.groupName ? n.groupName + ' · ' : '') + timeAgo(n.createdAt);
+          body.appendChild(msg); body.appendChild(meta);
+          item.appendChild(iconEl); item.appendChild(body);
           item.addEventListener('click', function() {
+            if (n.link && n.link.charAt(0) === '/' && n.link.charAt(1) !== '/') { window.location.href = n.link; return; }
             var gid = n.groupId ? String(n.groupId) : null;
             if (gid) {
               var isVote = n.type === 'vote' || n.type === 'vote-summary';
