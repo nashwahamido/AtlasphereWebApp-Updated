@@ -16,7 +16,7 @@
   <% var initial = String(person.username || '?').trim().charAt(0).toUpperCase(); %>
   <div class="person-avatar">
     <% if (person.profilePictureUrl) { %>
-      <img src="<%= person.profilePictureUrl %>" alt="<%= person.username %>">
+      <img src="<%= person.profilePictureUrl %>" alt="" data-initial="<%= initial %>" onerror="var s=document.createElement('span');s.setAttribute('aria-hidden','true');s.textContent=this.dataset.initial;this.replaceWith(s)">
     <% } else { %>
       <span aria-hidden="true"><%= initial %></span>
     <% } %>

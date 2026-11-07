@@ -5,7 +5,7 @@
 <li class="fr-row">
   <a class="fr-person" href="/people/<%= p.id %>">
     <% if (p.profilePictureUrl) { %>
-      <img class="fr-avatar" src="<%= p.profilePictureUrl %>" alt="" loading="lazy">
+      <img class="fr-avatar" src="<%= p.profilePictureUrl %>" alt="" loading="lazy" data-initial="<%= _initial %>" onerror="var s=document.createElement('span');s.className='fr-avatar fr-avatar--initial';s.setAttribute('aria-hidden','true');s.textContent=this.dataset.initial;this.replaceWith(s)">
     <% } else { %>
       <span class="fr-avatar fr-avatar--initial" aria-hidden="true"><%= _initial %></span>
     <% } %>
