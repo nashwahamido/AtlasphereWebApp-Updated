@@ -12,6 +12,8 @@ const sharp = require("sharp");
 const { sendEmail } = require("./config/mailer");
 const { getRecommendations } = require("./config/places");
 const { verifyPassword, upgradeToHash } = require("./config/passwords");
+const security = require("./config/security");
+const { escapeHtml, siteBase } = security;
 
 
 // ── Validation Rules ────────────────────────────────────────────────────
@@ -59,6 +61,10 @@ const validationLoginRules = [
 
 
 const app = express();
+app.disable("x-powered-by");
+// Railway terminates HTTPS at its proxy: trust it for req.ip / req.secure.
+app.set("trust proxy", 1);
+app.use(security.securityHeaders);
 
 // ── VIEW ENGINE SETUP ────────────────────────────────────────────────────
 app.set("view engine", "ejs");
@@ -72,7 +78,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // HTTPS at its proxy, so honour X-Forwarded-Proto. SITE_URL can pin it explicitly.
 app.use(function (req, res, next) {
   var proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
-  var site = (process.env.SITE_URL || (proto + "://" + req.get("host"))).replace(/\/$/, "");
+  var site = siteBase(req);
   res.locals.siteUrl = site;
   res.locals.pageUrl = site + req.originalUrl.split("?")[0];
   next();
@@ -80,7 +86,7 @@ app.use(function (req, res, next) {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static("assets"));
-app.use(fileUpload());
+app.use(fileUpload({ limits: { fileSize: 10 * 1024 * 1024 }, abortOnLimit: true, responseOnLimit: "That photo is too big (10 MB max)." }));
 
 // Where user uploads (profile + group photos) are written and served from.
 // Railway's container disk is ephemeral, so in production this points at a
@@ -89,7 +95,7 @@ app.use(fileUpload());
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "assets", "uploads");
 if (!fs.existsSync(UPLOAD_DIR)) { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); }
 app.set("uploadDir", UPLOAD_DIR);
-app.use("/uploads", express.static(UPLOAD_DIR));
+app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "365d", immutable: true }));
 
 // ── DATABASE ─────────────────────────────────────────────────────────────
 const connection = mysql.createPool({
@@ -117,6 +123,13 @@ connection.getConnection((err, conn) => {
 // Make DB connection accessible to route files
 app.set('db', connection);
 const friendsService = require("./services/friends")(connection.promise());
+const images = require("./services/images")(connection, UPLOAD_DIR);
+app.set("images", images);
+// Photos missing from disk (e.g. after a redeploy) come from the database.
+app.get("/uploads/:name", images.serve);
+const membership = security.createMembership(connection);
+app.set("membership", membership);
+const requireMember = membership.requireMember;
 
 // ── SESSION CONFIGURATION (stored in MySQL so sessions survive restarts) ──
 const sessionConfig = require("./config/session");
@@ -128,7 +141,32 @@ try {
 } catch (e) {
   console.warn("Sessions: using memory store (install express-mysql-session for persistence)");
 }
-app.use(session(sessionConfig));
+const sessionMiddleware = session(sessionConfig);
+app.use(sessionMiddleware);
+if (!process.env.SESSION_SECRET) {
+  console.warn("WARNING: SESSION_SECRET is not set; using the built-in default. Set it in the environment.");
+}
+
+// ── RATE LIMITS ──────────────────────────────────────────────────────────
+var emailKey = function (field) {
+  return function (req) { return String((req.body && req.body[field]) || "").trim().toLowerCase() || null; };
+};
+var tooManyPage = function (view, extra) {
+  return function (req, res) {
+    res.status(429).render(view, Object.assign({ title: "Too many attempts", user: null, error: "Too many attempts. Please wait a few minutes and try again.", success: null }, extra ? extra(req) : {}));
+  };
+};
+var limits = {
+  loginIp: security.createLimiter({ name: "login-ip", windowMs: 15 * 60 * 1000, max: 40, onLimit: tooManyPage("login") }),
+  loginAccount: security.createLimiter({ name: "login-acct", windowMs: 15 * 60 * 1000, max: 8, key: emailKey("loginemail"), onLimit: tooManyPage("login") }),
+  register: security.createLimiter({ name: "register", windowMs: 60 * 60 * 1000, max: 15, onLimit: tooManyPage("register") }),
+  forgotIp: security.createLimiter({ name: "forgot-ip", windowMs: 60 * 60 * 1000, max: 10, onLimit: tooManyPage("forgot-password") }),
+  forgotEmail: security.createLimiter({ name: "forgot-email", windowMs: 60 * 60 * 1000, max: 3, key: emailKey("email"), onLimit: tooManyPage("forgot-password") }),
+  resend: security.createLimiter({ name: "resend", windowMs: 60 * 60 * 1000, max: 6 }),
+  inviteEmail: security.createLimiter({ name: "invite-email", windowMs: 60 * 60 * 1000, max: 20, key: function (req) { return req.session.user ? String(req.session.user.id) : req.ip; } }),
+};
+app.set("limits", limits);
+var MAX_CODE_ATTEMPTS = 5;
 
 // ── EMAIL SETUP ──────────────────────────────────────────────────────────
 // Uses Brevo transactional HTTP API (port 443) — bypasses Railway SMTP port
@@ -137,7 +175,7 @@ console.log("Email: using Brevo HTTP API");
 
 // ── HELPERS ──────────────────────────────────────────────────────────────
 function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return security.generateCode();
 }
 
 async function sendVerificationEmail(toEmail, code) {
@@ -176,7 +214,7 @@ app.get("/auth/login", (req, res) => {
   res.render("login", { title: "Sign In", error: null, user: null });
 });
 
-app.post("/auth/login", validationLoginRules, (req, res) => {
+app.post("/auth/login", limits.loginIp, limits.loginAccount, validationLoginRules, (req, res) => {
   const errors = validationResult(req);
   
   if (!errors.isEmpty()) {
@@ -190,7 +228,6 @@ app.post("/auth/login", validationLoginRules, (req, res) => {
   const username = req.body.loginuser || req.body.loginemail;
   const password = req.body.loginpsw;
 
-  console.log("Login attempt:", { username, passwordLength: password ? password.length : 0, body: Object.keys(req.body) });
 
   if (!username || !password) {
     return res.render("login", {
@@ -210,7 +247,6 @@ app.post("/auth/login", validationLoginRules, (req, res) => {
       }
 
       if (results.length === 0) {
-        console.log("Login: No user found for:", username);
         return res.render("login", {
           title: "Sign In",
           error: "Invalid username or password. Try again.",
@@ -220,7 +256,6 @@ app.post("/auth/login", validationLoginRules, (req, res) => {
 
       const user = results[0];
       const { match, needsRehash } = await verifyPassword(password, user.password);
-      console.log("Login: Found user:", user.username, "| match:", match, needsRehash ? "| upgrading legacy password to a hash" : "");
       if (match && needsRehash) {
         try { await upgradeToHash(connection, user.IDuser, password); }
         catch (e) { console.error("Password upgrade failed:", e.message); }
@@ -234,6 +269,29 @@ app.post("/auth/login", validationLoginRules, (req, res) => {
         });
       }
 
+      limits.loginAccount.reset(String(username).trim().toLowerCase());
+
+      // Not verified yet: send a fresh code instead of signing in.
+      if (Number(user.isConfirmed) !== 1) {
+        const code = generateCode();
+        connection.query("UPDATE tbl_users SET verificationCode = ? WHERE IDuser = ?", [Number(code), user.IDuser], async () => {
+          await sendVerificationEmail(user.email, code);
+          req.session.regenerate(() => {
+            req.session.pendingVerification = { userId: user.IDuser, username: user.username, email: user.email, code, expiresAt: Date.now() + 30 * 60 * 1000, attempts: 0 };
+            req.session.save(() => res.redirect("/auth/verify"));
+          });
+        });
+        return;
+      }
+
+      // New session id on sign-in (prevents session fixation).
+      var pendingInvite = req.session.pendingInvite;
+      req.session.regenerate((regenErr) => {
+      if (regenErr) {
+        console.error("Session regenerate error:", regenErr);
+        return res.render("login", { title: "Login", error: "Session error. Please try again.", user: null });
+      }
+      if (pendingInvite) req.session.pendingInvite = pendingInvite;
       req.session.user = {
         id: user.IDuser,
         username: user.username,
@@ -260,6 +318,7 @@ app.post("/auth/login", validationLoginRules, (req, res) => {
           }
         );
       });
+      });
     }
   );
 });
@@ -269,7 +328,7 @@ app.get("/auth/register", (req, res) => {
   res.render("register", { title: "Register", user: null });
 });
 
-app.post("/auth/register", validationRegisterRules, async (req, res) => {
+app.post("/auth/register", limits.register, validationRegisterRules, async (req, res) => {
   const errors = validationResult(req);
   
   if (!errors.isEmpty()) {
@@ -280,7 +339,6 @@ app.post("/auth/register", validationRegisterRules, async (req, res) => {
     });
   }
   
-  console.log("New registration:", req.body);
 
   try {
     const { username, useremail, userphone, gender, psw } = req.body;
@@ -338,18 +396,11 @@ app.post("/auth/register", validationRegisterRules, async (req, res) => {
             email: useremail,
             code,
             expiresAt: Date.now() + 30 * 60 * 1000,
+            attempts: 0,
           };
 
           const sent = await sendVerificationEmail(useremail, code);
-          if (sent) {
-            console.log("Verification code sent to:", useremail);
-          } else {
-            console.log("Email failed — code is:", code);
-          }
-
-          console.log("=================================");
-          console.log("VERIFICATION CODE:", code);
-          console.log("=================================");
+          if (!sent) console.error("Verification email failed for new user", newUserId);
 
           req.session.save(() => {
             res.redirect("/auth/verify");
@@ -418,7 +469,19 @@ app.post("/auth/verify", validationVerifyRules, (req, res) => {
     });
   }
 
+  if ((pending.attempts || 0) >= MAX_CODE_ATTEMPTS) {
+    return res.render("register-step2", {
+      title: "Verify",
+      user: null,
+      email: pending.email,
+      error: 'Too many wrong codes. Click "Send code again" below for a new one.',
+      success: null,
+    });
+  }
+
   if (enteredCode !== pending.code) {
+    pending.attempts = (pending.attempts || 0) + 1;
+    req.session.save(() => {});
     return res.render("register-step2", {
       title: "Verify",
       user: null,
@@ -437,18 +500,16 @@ app.post("/auth/verify", validationVerifyRules, (req, res) => {
         return res.render("register-step2", { title: "Verify", error: "Verification failed. Please try again.", email: pending.email, user: null });
       }
 
+      // If user registered via invite link, add them to the group
+      var pendingInvite = req.session.pendingInvite;
+      req.session.regenerate(() => {
       req.session.user = {
         id: pending.userId,
         username: pending.username,
         email: pending.email,
       };
 
-      delete req.session.pendingVerification;
-
-      // If user registered via invite link, add them to the group
-      var pendingInvite = req.session.pendingInvite;
       if (pendingInvite) {
-        delete req.session.pendingInvite;
         connection.query(
           "SELECT * FROM tbl_groups WHERE inviteCode = ?",
           [pendingInvite],
@@ -475,18 +536,20 @@ app.post("/auth/verify", validationVerifyRules, (req, res) => {
           res.redirect("/setup");
         });
       }
+      });
     }
   );
 });
 
 // ── RESEND CODE ──────────────────────────────────────────────────────────
-app.get("/auth/resend-code", async (req, res) => {
+app.get("/auth/resend-code", limits.resend, async (req, res) => {
   const pending = req.session.pendingVerification;
   if (!pending) return res.redirect("/auth/register");
 
   const newCode = generateCode();
   req.session.pendingVerification.code = newCode;
   req.session.pendingVerification.expiresAt = Date.now() + 30 * 60 * 1000;
+  req.session.pendingVerification.attempts = 0;
 
   connection.query(
     "UPDATE tbl_users SET verificationCode = ? WHERE IDuser = ?",
@@ -495,10 +558,7 @@ app.get("/auth/resend-code", async (req, res) => {
       if (err) console.error("Resend code DB update error:", err);
 
       const sent = await sendVerificationEmail(pending.email, newCode);
-      console.log(sent ? "Resend OK" : "Resend failed — code: " + newCode);
-      console.log("=================================");
-      console.log("NEW VERIFICATION CODE:", newCode);
-      console.log("=================================");
+      if (!sent) console.error("Resend verification email failed for user", pending.userId);
 
       req.session.save(() => {
         res.render("register-step2", {
@@ -525,15 +585,13 @@ app.get("/auth/forgot-password", (req, res) => {
   res.render("forgot-password", { error: null, success: null });
 });
 
-app.post("/auth/forgot-password", (req, res) => {
+app.post("/auth/forgot-password", limits.forgotIp, limits.forgotEmail, (req, res) => {
   var email = (req.body.email || '').trim();
-  console.log("Forgot password request for:", email);
   if (!email) {
     return res.render("forgot-password", { error: "Please enter your email.", success: null });
   }
 
   connection.query("SELECT IDuser, username, email, isConfirmed FROM tbl_users WHERE email = ? LIMIT 1", [email], function(err, rows) {
-    console.log("Forgot password DB lookup:", { email, err: err ? err.message : null, found: rows ? rows.length : 0 });
     if (err || !rows || rows.length === 0) {
       // Don't reveal whether the email exists
       return res.render("forgot-password", { error: null, success: "If an account with that email exists, a reset link has been sent." });
@@ -553,19 +611,18 @@ app.post("/auth/forgot-password", (req, res) => {
           return res.render("forgot-password", { error: "Something went wrong. Please try again.", success: null });
         }
 
-        var resetLink = req.protocol + '://' + req.get('host') + '/auth/reset-password?token=' + token;
+        var resetLink = siteBase(req) + '/auth/reset-password?token=' + token;
 
         sendEmail({
           to: email,
           subject: "Reset your Atlasphere password",
           html: '<div style="font-family:Arial;max-width:480px;margin:0 auto;padding:32px">' +
             '<h1 style="color:#0B3856">Reset your password</h1>' +
-            '<p style="font-size:16px;color:#555">Hi ' + user.username + ', click the button below to reset your password. This link expires in 1 hour.</p>' +
+            '<p style="font-size:16px;color:#555">Hi ' + escapeHtml(user.username) + ', click the button below to reset your password. This link expires in 1 hour.</p>' +
             '<div style="text-align:center;margin:32px 0">' +
             '<a href="' + resetLink + '" style="display:inline-block;padding:14px 40px;background:#E8933A;color:#fff;text-decoration:none;border-radius:30px;font-weight:700;font-size:16px">Reset Password</a>' +
             '</div></div>'
         }).then(function(sent) {
-          console.log("Reset email sent:", sent, "to:", email);
           res.render("forgot-password", { error: null, success: "If an account with that email exists, a reset link has been sent." });
         }).catch(function(mailErr) {
           console.error("Reset email error:", mailErr.message);
@@ -644,27 +701,8 @@ app.post("/setup/upload", requireAuth, (req, res) => {
   }
 
   var file = req.files.profilePicture;
-  var uploadDir = UPLOAD_DIR;
 
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  var timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
-  var safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-  var fileName = timestamp + "_" + safeName;
-  var filePath = path.join(uploadDir, fileName);
-
-  sharp(file.data)
-    .resize(400, 400, { fit: 'cover', position: 'centre' })
-    .jpeg({ quality: 85 })
-    .toFile(filePath, function(sharpErr) {
-    if (sharpErr) {
-      console.error("File upload error:", sharpErr);
-      return res.redirect("/setup/countries");
-    }
-
-    var dbPath = "/uploads/" + fileName;
+  images.saveUpload(file, { width: 400, height: 400, prefix: "user{id}_".replace("{id}", req.session.user.id) }).then(function(dbPath) {
 
     connection.query(
       "UPDATE tbl_users SET profilePictureUrl = ?, profilePictureAlt = ? WHERE IDuser = ?",
@@ -682,6 +720,9 @@ app.post("/setup/upload", requireAuth, (req, res) => {
         });
       }
     );
+  }).catch(function(upErr) {
+    console.error("Profile photo upload error:", upErr.message);
+    res.redirect("/setup/countries");
   });
 });
 
@@ -692,27 +733,8 @@ app.post("/profile/upload", requireAuth, (req, res) => {
   }
 
   var file = req.files.profilePicture;
-  var uploadDir = UPLOAD_DIR;
 
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  var timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
-  var safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-  var fileName = timestamp + "_" + safeName;
-  var filePath = path.join(uploadDir, fileName);
-
-  sharp(file.data)
-    .resize(400, 400, { fit: 'cover', position: 'centre' })
-    .jpeg({ quality: 85 })
-    .toFile(filePath, function(sharpErr) {
-    if (sharpErr) {
-      console.error("File upload error:", sharpErr);
-      return res.redirect("/profile");
-    }
-
-    var dbPath = "/uploads/" + fileName;
+  images.saveUpload(file, { width: 400, height: 400, prefix: "user{id}_".replace("{id}", req.session.user.id) }).then(function(dbPath) {
 
     connection.query(
       "UPDATE tbl_users SET profilePictureUrl = ?, profilePictureAlt = ? WHERE IDuser = ?",
@@ -730,6 +752,9 @@ app.post("/profile/upload", requireAuth, (req, res) => {
         });
       }
     );
+  }).catch(function(upErr) {
+    console.error("Profile photo upload error:", upErr.message);
+    res.redirect("/profile");
   });
 });
 
@@ -943,7 +968,7 @@ app.get("/groups/create/activities", requireAuth, (req, res) => {
 });
 
 // ── Save activity preferences for a group ───────────────────────────────
-app.post("/groups/save-activities", requireAuth, (req, res) => {
+app.post("/groups/save-activities", requireAuth, requireMember(), (req, res) => {
   var { groupId, activities } = req.body;
   if (!groupId || !Array.isArray(activities)) {
     return res.status(400).json({ error: "Missing groupId or activities" });
@@ -1008,7 +1033,7 @@ app.get("/api/recommendations", requireAuth, async (req, res) => {
 // ── VOTE API ────────────────────────────────────────────────────────────
 
 // saves or updates user's vote on an activity
-app.post("/api/votes", requireAuth, (req, res) => {
+app.post("/api/votes", requireAuth, requireMember(), (req, res) => {
   var userId = req.session.user.id;
   var userName = req.session.user.username || 'Someone';
   var { groupId, activityId, activityName, activityImage, activityDesc, activityTags, vote } = req.body;
@@ -1045,7 +1070,7 @@ app.post("/api/votes", requireAuth, (req, res) => {
   );
 });
 
-app.get("/api/votes", requireAuth, (req, res) => {
+app.get("/api/votes", requireAuth, requireMember({ onMissing: function (req, res) { res.json([]); } }), (req, res) => {
   var groupId = req.query.groupId;
   if (!groupId) return res.json([]);
   connection.query(
@@ -1055,7 +1080,7 @@ app.get("/api/votes", requireAuth, (req, res) => {
   );
 });
 
-app.get("/api/votes/saved", requireAuth, (req, res) => {
+app.get("/api/votes/saved", requireAuth, requireMember({ onMissing: function (req, res) { res.json([]); } }), (req, res) => {
   var groupId = req.query.groupId;
   var type = req.query.type;
   console.log("Vote SAVED GET:", { groupId, type });
@@ -1073,7 +1098,7 @@ app.get("/api/votes/saved", requireAuth, (req, res) => {
 // ── ITINERARY BLOCKS API ─────────────────────────────────────────────────
 
 // Save a single block (upsert)
-app.post("/api/itinerary/block", requireAuth, (req, res) => {
+app.post("/api/itinerary/block", requireAuth, requireMember(), (req, res) => {
   var userId = req.session.user.id;
   var { groupId, dayIndex, timeSlot, activityName, activityColor, duration } = req.body;
   if (!groupId || dayIndex === undefined || !timeSlot || !activityName) return res.status(400).json({ error: "Missing fields" });
@@ -1089,7 +1114,7 @@ app.post("/api/itinerary/block", requireAuth, (req, res) => {
 });
 
 // Delete a single block
-app.delete("/api/itinerary/block", requireAuth, (req, res) => {
+app.delete("/api/itinerary/block", requireAuth, requireMember(), (req, res) => {
   var { groupId, dayIndex, timeSlot } = req.body;
   if (!groupId || dayIndex === undefined || !timeSlot) return res.status(400).json({ error: "Missing fields" });
   connection.query(
@@ -1103,7 +1128,7 @@ app.delete("/api/itinerary/block", requireAuth, (req, res) => {
 });
 
 // Save all blocks for a group (full replace) - kept for compatibility
-app.post("/api/itinerary/blocks", requireAuth, (req, res) => {
+app.post("/api/itinerary/blocks", requireAuth, requireMember(), (req, res) => {
   var userId = req.session.user.id;
   var { groupId, blocks } = req.body;
   console.log("Itinerary save:", { groupId, userId, blockCount: blocks ? blocks.length : 0 });
@@ -1131,7 +1156,7 @@ app.post("/api/itinerary/blocks", requireAuth, (req, res) => {
 });
 
 // Load blocks for a group
-app.get("/api/itinerary/blocks", requireAuth, (req, res) => {
+app.get("/api/itinerary/blocks", requireAuth, requireMember({ onMissing: function (req, res) { res.json([]); } }), (req, res) => {
   var groupId = req.query.groupId;
   if (!groupId) return res.json([]);
   connection.query(
@@ -1144,7 +1169,7 @@ app.get("/api/itinerary/blocks", requireAuth, (req, res) => {
 });
 
 // Save shared date range for a group
-app.post("/api/itinerary/dates", requireAuth, (req, res) => {
+app.post("/api/itinerary/dates", requireAuth, requireMember(), (req, res) => {
   var { groupId, rangeStart, rangeEnd, calYear, calMonth } = req.body;
   if (!groupId) return res.status(400).json({ error: "Missing groupId" });
   connection.query(
@@ -1158,7 +1183,7 @@ app.post("/api/itinerary/dates", requireAuth, (req, res) => {
 });
 
 // Load shared date range for a group
-app.get("/api/itinerary/dates", requireAuth, (req, res) => {
+app.get("/api/itinerary/dates", requireAuth, requireMember({ onMissing: function (req, res) { res.json(null); } }), (req, res) => {
   var groupId = req.query.groupId;
   if (!groupId) return res.json(null);
   connection.query(
@@ -1175,7 +1200,7 @@ app.get("/api/itinerary/dates", requireAuth, (req, res) => {
 // Notes attached to a scheduled block, identified by (groupId, dayIndex, timeSlot).
 
 // List comments for one block, oldest first.
-app.get("/api/itinerary/comments", requireAuth, (req, res) => {
+app.get("/api/itinerary/comments", requireAuth, requireMember({ onMissing: function (req, res) { res.json([]); } }), (req, res) => {
   var { groupId, dayIndex, timeSlot } = req.query;
   if (!groupId || dayIndex === undefined || !timeSlot) return res.json([]);
   connection.query(
@@ -1191,7 +1216,7 @@ app.get("/api/itinerary/comments", requireAuth, (req, res) => {
 });
 
 // Count comments per block for a group, so the UI can badge which blocks have notes.
-app.get("/api/itinerary/comments/counts", requireAuth, (req, res) => {
+app.get("/api/itinerary/comments/counts", requireAuth, requireMember({ onMissing: function (req, res) { res.json([]); } }), (req, res) => {
   var groupId = req.query.groupId;
   if (!groupId) return res.json([]);
   connection.query(
@@ -1205,7 +1230,7 @@ app.get("/api/itinerary/comments/counts", requireAuth, (req, res) => {
 });
 
 // Add a comment to a block (author taken from the session).
-app.post("/api/itinerary/comments", requireAuth, (req, res) => {
+app.post("/api/itinerary/comments", requireAuth, requireMember(), (req, res) => {
   var userId = req.session.user.id;
   var userName = req.session.user.username || 'Someone';
   var { groupId, dayIndex, timeSlot, comment } = req.body;
@@ -1317,7 +1342,7 @@ app.post("/api/notifications/read", requireAuth, (req, res) => {
 });
 
 // Get last active time for a group
-app.get("/api/groups/last-active", requireAuth, (req, res) => {
+app.get("/api/groups/last-active", requireAuth, requireMember({ onMissing: function (req, res) { res.json({ lastActive: null }); } }), (req, res) => {
   var groupId = req.query.groupId;
   if (!groupId) return res.json({ lastActive: null });
   connection.query(
@@ -1333,7 +1358,7 @@ app.get("/api/groups/last-active", requireAuth, (req, res) => {
 });
 
 // ── Invite friend to group (JSON API) ─────────────────────────────────────
-app.post("/api/groups/invite", requireAuth, (req, res) => {
+app.post("/api/groups/invite", requireAuth, requireMember(), (req, res) => {
   var userId = req.session.user.id;
   var userName = req.session.user.username;
   var { groupId, query } = req.body;
@@ -1349,6 +1374,9 @@ app.post("/api/groups/invite", requireAuth, (req, res) => {
       // ── No account found — send an email invite if query looks like an email ──
       if (!rows || rows.length === 0) {
         var isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query.trim());
+        if (isEmail && limits.inviteEmail.take(String(userId))) {
+          return res.status(429).json({ success: false, error: "You've sent a lot of invites. Please try again later." });
+        }
         if (!isEmail) {
           return res.json({ success: false, error: 'No user found matching "' + query + '"' });
         }
@@ -1361,7 +1389,8 @@ app.post("/api/groups/invite", requireAuth, (req, res) => {
               return res.json({ success: false, error: 'Group not found' });
             }
             var gName = gRows[0].name;
-            var joinLink = req.protocol + '://' + req.get('host') + '/groups/join/' + gRows[0].inviteCode;
+            var joinLink = siteBase(req) + '/groups/join/' + gRows[0].inviteCode;
+            var safeName = escapeHtml(userName), safeGroup = escapeHtml(gName);
             sendEmail({
               to: query.trim(),
               subject: userName + ' invited you to join "' + gName + '" on Atlasphere',
@@ -1369,10 +1398,10 @@ app.post("/api/groups/invite", requireAuth, (req, res) => {
                 <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;">
                   <h1 style="color:#0B3856;font-size:24px;">You've been invited!</h1>
                   <p style="color:#555;font-size:16px;line-height:1.6;">
-                    <strong>${userName}</strong> invited you to join the <strong>"${gName}"</strong> group on Atlasphere.
+                    <strong>${safeName}</strong> invited you to join the <strong>"${safeGroup}"</strong> group on Atlasphere.
                   </p>
                   <a href="${joinLink}" style="display:inline-block;margin:24px 0;padding:14px 32px;background:#E8933A;color:#fff;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;">
-                    Join "${gName}"
+                    Join "${safeGroup}"
                   </a>
                   <p style="color:#888;font-size:13px;">
                     You'll need to create a free account to join. The link above will take you straight there.
@@ -1430,7 +1459,7 @@ app.post("/api/groups/invite", requireAuth, (req, res) => {
 });
 
 // ── Get invite link for a group ───────────────────────────────────────────
-app.get("/api/groups/invite-link", requireAuth, (req, res) => {
+app.get("/api/groups/invite-link", requireAuth, requireMember(), (req, res) => {
   var groupId = req.query.groupId;
   if (!groupId) return res.status(400).json({ error: "Missing groupId" });
 
@@ -1439,7 +1468,7 @@ app.get("/api/groups/invite-link", requireAuth, (req, res) => {
     [groupId],
     function(err, rows) {
       if (err || !rows || rows.length === 0) return res.status(404).json({ error: "Group not found" });
-      var inviteLink = req.protocol + "://" + req.get("host") + "/groups/join/" + rows[0].inviteCode;
+      var inviteLink = siteBase(req) + "/groups/join/" + rows[0].inviteCode;
       res.json({ inviteLink: inviteLink });
     }
   );
@@ -1471,68 +1500,95 @@ const server = http.createServer(app);
 const io = new Server(server);
 var roomMembers = {}; // { "group-123": { "userId1": true, ... } }
 
-io.on("connection", function(socket) {
-  console.log("Socket connected:", socket.id);
+// Sockets use the same login session as the website. Every trip room is
+// checked against the trip's members, and who sent a message always comes
+// from the session, never from the browser.
+io.engine.use(sessionMiddleware);
 
-  // ── Notification socket: joins multiple group rooms for navbar badge updates ──
+io.on("connection", function(socket) {
+  var me = socket.request.session && socket.request.session.user;
+  if (!me) { socket.disconnect(true); return; }
+  var allowed = {}; // groupId -> true once membership is confirmed
+
+  function enterRoom(groupId) {
+    var gid = String(groupId || "");
+    if (!/^\d{1,20}$/.test(gid)) return Promise.resolve(false);
+    if (allowed[gid]) return Promise.resolve(true);
+    return membership.isMember(me.id, gid).then(function(ok) {
+      if (ok) { allowed[gid] = true; socket.join("group-" + gid); }
+      return ok;
+    }).catch(function(err) { console.error("Socket membership check failed:", err.message); return false; });
+  }
+
+  // ── Notification socket: joins the user's trip rooms for navbar badges ──
   socket.on("join-notifications", function(data) {
-    if (!data.groupIds || !Array.isArray(data.groupIds)) return;
-    data.groupIds.forEach(function(gid) {
-      socket.join("group-" + gid);
-    });
-    console.log("Notification socket joined " + data.groupIds.length + " group rooms for user badges");
+    if (!data || !Array.isArray(data.groupIds)) return;
+    data.groupIds.slice(0, 200).forEach(function(gid) { enterRoom(gid); });
+  });
+
+  // Itinerary live sync: listen to a trip without loading the chat.
+  socket.on("watch-group", function(data) {
+    if (data) enterRoom(data.groupId);
   });
 
   socket.on("join-group", function(data) {
-    var room = "group-" + data.groupId;
-    socket.join(room);
-    socket.userData = { userId: data.userId, userName: data.userName, groupId: data.groupId, userAvatar: data.userAvatar || '' };
+    if (!data) return;
+    enterRoom(data.groupId).then(function(ok) {
+      if (!ok) { socket.emit("chat-error", { error: "You're not a member of this trip." }); return; }
+      var room = "group-" + data.groupId;
+      socket.userData = { userId: me.id, userName: me.username, groupId: String(data.groupId), userAvatar: me.profilePictureUrl || '' };
 
-    // Load last 100 messages from DB
-    connection.query(
-      "SELECT id, groupId, userId, userName, userAvatar, `text`, `time`, `system` FROM tbl_chat_messages WHERE groupId = ? ORDER BY createdAt ASC LIMIT 100",
-      [data.groupId],
-      function (err, rows) {
-        var history = [];
-        if (!err && rows) {
-          history = rows.map(function (r) {
-            return { id: r.id, userId: r.userId, userName: r.userName, userAvatar: r.userAvatar || '', user: r.userName, text: r.text, time: r.time, system: !!r.system };
-          });
+      // Load last 100 messages from DB
+      connection.query(
+        "SELECT id, groupId, userId, userName, userAvatar, `text`, `time`, `system` FROM tbl_chat_messages WHERE groupId = ? ORDER BY createdAt ASC LIMIT 100",
+        [data.groupId],
+        function (err, rows) {
+          var history = [];
+          if (!err && rows) {
+            history = rows.map(function (r) {
+              return { id: r.id, userId: r.userId, userName: r.userName, userAvatar: r.userAvatar || '', user: r.userName, text: r.text, time: r.time, system: !!r.system };
+            });
+          }
+          socket.emit("chat-history", history);
         }
-        socket.emit("chat-history", history);
-      }
-    );
+      );
 
-    // Only broadcast "user joined" if they're not already in the room
-    if (!roomMembers[room]) roomMembers[room] = {};
-    if (!roomMembers[room][data.userId]) {
-      roomMembers[room][data.userId] = true;
-      socket.to(room).emit("user-joined", { userName: data.userName });
-      console.log(data.userName + " joined room " + room);
-    }
+      // Only broadcast "user joined" if they're not already in the room
+      if (!roomMembers[room]) roomMembers[room] = {};
+      if (!roomMembers[room][me.id]) {
+        roomMembers[room][me.id] = true;
+        socket.to(room).emit("user-joined", { userName: me.username });
+      }
+    });
   });
 
   socket.on("send-message", function(data) {
-    var room = "group-" + data.groupId;
-    var msgId = Date.now() + "-" + Math.random().toString(36).substr(2, 5);
+    if (!data) return;
+    var gid = String(data.groupId || "");
+    if (!allowed[gid]) return; // must have joined the trip first
+    var text = typeof data.text === "string" ? data.text.trim().slice(0, 2000) : "";
+    if (!text) return;
+    var room = "group-" + gid;
+    var msgId = Date.now() + "-" + require("crypto").randomBytes(3).toString("hex");
     var now = new Date();
     var timeStr = now.toISOString();                                    // full ISO → sent over socket
     var timeForDb = now.toTimeString().slice(0, 5);                    // "HH:MM" → fits the time column
+    var avatar = me.profilePictureUrl || '';
     var msg = {
       id: msgId,
-      groupId: data.groupId,
-      userId: data.userId,
-      userName: data.userName,
-      userAvatar: data.userAvatar || '',
-      user: data.userName,
-      text: data.text,
+      groupId: gid,
+      userId: me.id,
+      userName: me.username,
+      userAvatar: avatar,
+      user: me.username,
+      text: text,
       time: timeStr
     };
 
     // Save to DB
     connection.query(
       "INSERT INTO tbl_chat_messages (id, groupId, userId, userName, userAvatar, `text`, `time`, `system`) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
-      [msgId, data.groupId, data.userId, data.userName, data.userAvatar || '', data.text, timeForDb],
+      [msgId, gid, me.id, me.username, avatar, text, timeForDb],
       function (err) {
         if (err) console.error("Message save error:", err.message);
       }
@@ -1543,13 +1599,13 @@ io.on("connection", function(socket) {
 
   // ── Itinerary real-time sync ─────────────────────────────────────────────
   socket.on("itinerary-update", function(data) {
-    // Broadcast to everyone else in the group room
-    var room = "group-" + data.groupId;
-    socket.to(room).emit("itinerary-update", data);
+    if (!data) return;
+    enterRoom(data.groupId).then(function(ok) {
+      if (ok) socket.to("group-" + data.groupId).emit("itinerary-update", data);
+    });
   });
 
   socket.on("disconnect", function() {
-    console.log("Socket disconnected:", socket.id);
     if (socket.userData) {
       var room = "group-" + socket.userData.groupId;
       if (roomMembers[room] && roomMembers[room][socket.userData.userId]) {
@@ -1631,6 +1687,13 @@ server.listen(PORT, '0.0.0.0', function() {
       else { console.log("Widened tbl_activity_votes.activityImage to VARCHAR(1024)"); }
     }
   );
+
+  // Photos are kept in the database (see services/images.js); copy any that
+  // are still only on disk.
+  images.ensureSchema()
+    .then(function() { return images.backfill([path.join(__dirname, "assets", "uploads")]); })
+    .then(function(n) { console.log("Ensured tbl_images table exists" + (n ? "; saved " + n + " photo(s) from disk" : "")); })
+    .catch(function(err) { console.error("Migration note (images):", err.message); });
 
   // Auto-migrate: friendships table (see services/friends.js).
   friendsService.ensureSchema()
