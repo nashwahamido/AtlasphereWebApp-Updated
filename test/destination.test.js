@@ -114,11 +114,13 @@ test("overview: forecast for near days, typical weather for later ones, holidays
   assert.deepEqual(info.holidays.map((h) => h.date), ["2026-12-08"]);
 });
 
-test("overview without trip dates lists the coming holidays", async () => {
+test("overview without trip dates: the coming week and upcoming holidays", async () => {
   const dest = createDestination({ http: fakeHttp(), now, places: { fetchPlaces: async () => [] } });
   const info = await dest.overview(GROUP, null);
   assert.equal(info.trip, null);
-  assert.deepEqual(info.days, []);
+  // Without dates: the coming week, with the forecast.
+  assert.deepEqual(info.days.map((d) => d.date), ["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"]);
+  assert.equal(info.days[0].weather.source, "forecast");
   assert.deepEqual(info.holidays.map((h) => h.name), ["Immaculate Conception", "Christmas Day"]);
 });
 

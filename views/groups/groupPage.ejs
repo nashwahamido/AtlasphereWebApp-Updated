@@ -60,6 +60,7 @@
      data-user-avatar="<%= typeof user !== 'undefined' && user && user.profilePictureUrl ? user.profilePictureUrl : '' %>"
      data-group-name="<%= typeof group !== 'undefined' && group ? group.name : '' %>"
      data-group-destination="<%= typeof group !== 'undefined' && group ? group.destination : '' %>"
+     data-group-cities="<%= typeof group !== 'undefined' && group && group.cities ? [].concat(group.cities).join(',') : '' %>"
      data-group-photo="<%= typeof group !== 'undefined' && group && group.photo ? group.photo : '' %>"
      data-group-flag="<%= typeof group !== 'undefined' && group && group.flag ? group.flag : '' %>"
      data-trip-days="<%= typeof tripDays !== 'undefined' ? tripDays : 7 %>"

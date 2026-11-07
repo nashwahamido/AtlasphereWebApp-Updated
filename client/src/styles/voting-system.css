@@ -451,3 +451,12 @@
   .voting-header h1 { font-size: 1.7rem; }
   .activity-copy h2 { font-size: 1.5rem; }
 }
+
+/* City filter for trips with several cities */
+.vote-cities { display: flex; gap: 8px; overflow-x: auto; margin: -6px 0 18px; padding: 2px; scrollbar-width: none; }
+.vote-cities::-webkit-scrollbar { display: none; }
+.vote-city { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(127,127,127,0.3); background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.vote-city--active { background: #E8933A; border-color: #E8933A; color: #fff; }
+.vote-city__count { font-size: 12px; opacity: 0.75; }
+.vote-city-empty { text-align: center; opacity: 0.75; margin: 40px 0; }
+.activity-city { display: inline-block; font-size: 13px; font-weight: 600; color: #fff; opacity: 0.9; margin-bottom: 4px; }
