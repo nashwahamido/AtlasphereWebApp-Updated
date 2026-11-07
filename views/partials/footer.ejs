@@ -1,31 +1,14 @@
 <!-- Footer -->
+<% var _email = (typeof supportEmail !== 'undefined' && supportEmail) || 'atlasphere.app@gmail.com'; %>
 <footer class="global-footer">
-  <div class="footer-content">
-    <div class="footer-section">
-      <h4>Atlasphere</h4>
-      <p>Making travel planning easy and fun with friends.</p>
-    </div>
-    <div class="footer-section">
-      <h4>Quick Links</h4>
-      <ul>
-        <li><a href="/">Home</a></li>
-        <li><a href="/groups">My Trips</a></li>
-      </ul>
-    </div>
-    <div class="footer-section">
-      <h4>Support</h4>
-      <ul>
-        <li><a href="#">Help Center</a></li>
-        <li><a href="#">Privacy Policy</a></li>
-        <li><a href="#">Terms of Service</a></li>
-      </ul>
-    </div>
-    <div class="footer-section">
-      <h4>Contact</h4>
-      <p>Email: <a href="mailto:info@atlasphere.com">info@atlasphere.com</a></p>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    <p>&copy; 2026 Atlasphere. All rights reserved.</p>
+  <div class="footer-inner">
+    <p class="footer-brand"><strong>Atlasphere</strong> <span>Stop planning. Start going.</span></p>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/help">Help</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="mailto:<%= _email %>">Contact</a>
+    </nav>
+    <p class="footer-copy">&copy; <%= new Date().getFullYear() %> Atlasphere</p>
   </div>
 </footer>

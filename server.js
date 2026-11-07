@@ -967,6 +967,14 @@ app.post("/groups/save-activities", requireAuth, (req, res) => {
 app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVerificationEmail, sendEmail, generateCode }));
 app.use(require("./routes/friends")(connection));
 app.use(require("./routes/destination")(connection));
+// Help, Privacy and Terms pages (also linked from the mobile app).
+app.locals.supportEmail = process.env.SUPPORT_EMAIL || "atlasphere.app@gmail.com";
+var INFO_PAGES = { help: "Help", privacy: "Privacy Policy", terms: "Terms of Service" };
+Object.keys(INFO_PAGES).forEach(function (page) {
+  app.get("/" + page, function (req, res) {
+    res.render("info", { page: page, title: INFO_PAGES[page], updated: "7 November 2026", user: req.session.user || null });
+  });
+});
 app.use("/groups", require("./routes/groups"));
 app.use("/users", require("./routes/users"));
 
