@@ -4,6 +4,15 @@ var axios = require("axios");
 var router = express.Router();
 var crypto = require("crypto");
 var countries = require("../data/countries");
+var { siteBase, escapeHtml } = require("../config/security");
+
+// Only a trip's members may open or change it (membership helper is set up
+// in server.js; see config/security.js).
+function member(options) {
+  return function (req, res, next) {
+    return req.app.get("membership").requireMember(options)(req, res, next);
+  };
+}
 
 function getDb(req) {
   return req.app.get("db");
@@ -152,7 +161,7 @@ var groupData = {
         "INSERT IGNORE INTO tbl_group_members (groupId, userId, username, email) VALUES (?, ?, ?, ?)",
         [groupData.id, user.id, user.username, user.email],
         function () {
-          var inviteLink = req.protocol + "://" + req.get("host") + "/groups/join/" + inviteCode;
+          var inviteLink = siteBase(req) + "/groups/join/" + inviteCode;
 
           groupData.members = [{ id: user.id, username: user.username, email: user.email }];
 
@@ -171,14 +180,14 @@ var groupData = {
 });
 
 // ── Upload group photo ──────────────────────────────────────────────────
-router.post("/upload-photo", requireGroupAuth, function (req, res) {
+router.post("/upload-photo", requireGroupAuth, member(), function (req, res) {
   var db = getDb(req);
   var groupId = req.body.groupId;
 
   // Where to go after saving. During creation the form omits redirectTo and we
   // fall back to the activities step; when changing the photo later the group
   // page passes redirectTo=/groups/<id> so the user stays where they were.
-  var fallback = "/groups/create/activities?groupId=" + groupId;
+  var fallback = "/groups/create/activities?groupId=" + encodeURIComponent(groupId);
   var redirectTo = req.body.redirectTo;
   var dest = (typeof redirectTo === "string" && /^\/groups(\/|\?|$)/.test(redirectTo)) ? redirectTo : fallback;
 
@@ -186,41 +195,22 @@ router.post("/upload-photo", requireGroupAuth, function (req, res) {
     return res.redirect(dest);
   }
 
-  var path = require("path");
-  var fs = require("fs");
-  var file = req.files.groupPhoto;
-  // Persistent uploads dir (Railway volume in prod) configured in server.js.
-  var uploadDir = req.app.get("uploadDir") || path.join(__dirname, "..", "assets", "uploads");
-
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  var timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
-  var safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-  var fileName = "group_" + groupId + "_" + timestamp + "_" + safeName;
-  var filePath = path.join(uploadDir, fileName);
-
-  sharp(file.data)
-    .resize(800, 600, { fit: 'cover', position: 'centre' })
-    .jpeg({ quality: 85 })
-    .toFile(filePath, function(sharpErr) {
-    if (sharpErr) {
-      console.error("Group photo upload error:", sharpErr);
-      return res.redirect(dest);
-    }
-    var dbPath = "/uploads/" + fileName;
-
-    db.query("UPDATE tbl_groups SET photo = ? WHERE id = ?", [dbPath, groupId], function (dbErr) {
-      if (dbErr) console.error("Group photo DB error:", dbErr.message);
-      else console.log("Group photo saved (resized):", dbPath);
+  // Stored in the database (services/images.js), so it survives redeploys.
+  req.app.get("images").saveUpload(req.files.groupPhoto, { width: 800, height: 600, prefix: "group_" + String(groupId).replace(/\D/g, "") + "_" })
+    .then(function (dbPath) {
+      db.query("UPDATE tbl_groups SET photo = ? WHERE id = ?", [dbPath, groupId], function (dbErr) {
+        if (dbErr) console.error("Group photo DB error:", dbErr.message);
+        res.redirect(dest);
+      });
+    })
+    .catch(function (upErr) {
+      console.error("Group photo upload error:", upErr.message);
       res.redirect(dest);
     });
-  });
 });
 
 // ── Invite by email ─────────────────────────────────────────────────────
-router.post("/invite", requireGroupAuth, async function (req, res) {
+router.post("/invite", requireGroupAuth, member(), async function (req, res) {
   var db = getDb(req);
   var groupId = req.body.groupId;
   var friendEmail = req.body.friendEmail || '';
@@ -230,7 +220,7 @@ router.post("/invite", requireGroupAuth, async function (req, res) {
   loadGroup(db, groupId, function (err, group) {
     if (!group) return res.status(404).send("Group not found");
 
-    var inviteLink = req.protocol + "://" + req.get("host") + "/groups/join/" + group.inviteCode;
+    var inviteLink = siteBase(req) + "/groups/join/" + group.inviteCode;
 
     // Username invite: look up user and add directly
     if (friendUsername) {
@@ -282,17 +272,25 @@ router.post("/invite", requireGroupAuth, async function (req, res) {
       });
     }
 
-    var senderName = user ? user.username : "Someone";
+    var limiter = req.app.get("limits") && req.app.get("limits").inviteEmail;
+    if (limiter && limiter.take(String(user.id))) {
+      return res.status(429).render("groups/create-confirm", {
+        title: "Group Created", user: user, group: group, inviteLink: inviteLink, inviteSuccess: null,
+        inviteError: "You've sent a lot of invites. Please try again later, or share the link instead."
+      });
+    }
+    var senderName = escapeHtml(user ? user.username : "Someone");
+    var safeGroupName = escapeHtml(group.name);
     axios.post(
       "https://api.mailjet.com/v3.1/send",
       {
         Messages: [{
           From: { Email: process.env.MAIL_FROM || "atlasphretravelapp@gmail.com", Name: "Atlasphere" },
           To: [{ Email: friendEmail }],
-          Subject: senderName + " invited you to join " + group.name + " on Atlasphere!",
+          Subject: (user ? user.username : "Someone") + " invited you to join " + group.name + " on Atlasphere!",
           HTMLPart: "<div style=\"font-family:Arial;max-width:480px;margin:0 auto;padding:32px\">" +
                 "<h1 style=\"color:#0B3856\">You're invited!</h1>" +
-                "<p style=\"font-size:16px;color:#555\">" + senderName + " wants you to join their trip group <strong>" + group.name + "</strong> on Atlasphere.</p>" +
+                "<p style=\"font-size:16px;color:#555\">" + senderName + " wants you to join their trip group <strong>" + safeGroupName + "</strong> on Atlasphere.</p>" +
                 "<div style=\"text-align:center;margin:32px 0\">" +
                 "<a href=\"" + inviteLink + "\" style=\"display:inline-block;padding:14px 40px;background:#E8933A;color:#fff;text-decoration:none;border-radius:30px;font-weight:700;font-size:16px\">Join Group</a>" +
                 "</div></div>"
@@ -360,7 +358,6 @@ router.get("/", function (req, res) {
       return res.redirect("/groups/create/country");
     }
 
-    console.log("GROUP OBJECT:", userGroups[0]);
     res.render("groups/groupPage", {
       user: user,
       group: userGroups[0],
@@ -371,7 +368,7 @@ router.get("/", function (req, res) {
 });
 
 // ── Individual group page (MUST be last) ────────────────────────────────
-router.get("/:id", function (req, res) {
+router.get("/:id", member({ page: true }), function (req, res) {
   var user = req.session.user;
   if (!user) return res.redirect("/auth/login");
 
@@ -386,7 +383,6 @@ router.get("/:id", function (req, res) {
     }
 
     loadUserGroups(db, user.id, function (err2, userGroups) {
-      console.log("GROUP OBJECT:", group);
       res.render("groups/groupPage", {
         user: user,
         group: group,
@@ -435,20 +431,20 @@ router.post("/leave/:id", requireGroupAuth, function (req, res) {
 });
 
 // ── Rename group ────────────────────────────────────────────────────────
-router.post("/rename/:id", requireGroupAuth, function (req, res) {
+router.post("/rename/:id", requireGroupAuth, member(), function (req, res) {
   var db = getDb(req);
   var newName = req.body.newName;
   if (!newName || !newName.trim()) {
     return res.json({ success: false, error: "Name cannot be empty" });
   }
-  db.query("UPDATE tbl_groups SET name = ? WHERE id = ?", [newName.trim(), req.params.id], function (err) {
+  db.query("UPDATE tbl_groups SET name = ? WHERE id = ?", [newName.trim().slice(0, 100), req.params.id], function (err) {
     if (err) return res.status(500).json({ success: false, error: "Failed to rename" });
     res.json({ success: true });
   });
 });
 
 // ── Update group activities/interests ────────────────────────────────────
-router.post("/update-activities/:id", requireGroupAuth, function (req, res) {
+router.post("/update-activities/:id", requireGroupAuth, member(), function (req, res) {
   var db = getDb(req);
   var groupId = req.params.id;
   var activities = req.body.activities || [];

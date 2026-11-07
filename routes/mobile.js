@@ -8,6 +8,7 @@ const tokens = require("../config/tokens");
 const { verifyPassword, upgradeToHash } = require("../config/passwords");
 const createFriends = require("../services/friends");
 const { FriendError } = require("../services/friends");
+const { createLimiter, escapeHtml, siteBase } = require("../config/security");
 
 const ACCESS_TTL = 60 * 60 * 24 * 30; // 30 days
 const PENDING_TTL = 60 * 30;          // 30 minutes, same as the emailed code
@@ -17,6 +18,20 @@ module.exports = function createMobileRouter(deps) {
   const db = connection.promise();
   const friends = createFriends(db);
   const router = express.Router();
+
+  // Brute-force protection: sign-in and code checks are limited per IP and
+  // per account; a code stops working after 5 wrong tries (ask for a new one).
+  const json429 = (req, res) => fail(res, 429, "Too many attempts. Please wait a few minutes and try again.");
+  const lowerField = (f) => (req) => String((req.body && req.body[f]) || "").trim().toLowerCase() || null;
+  const limitLoginIp = createLimiter({ name: "m-login-ip", windowMs: 15 * 60 * 1000, max: 40, onLimit: json429 });
+  const limitLoginAcct = createLimiter({ name: "m-login-acct", windowMs: 15 * 60 * 1000, max: 8, key: lowerField("email"), onLimit: json429 });
+  const limitRegister = createLimiter({ name: "m-register", windowMs: 60 * 60 * 1000, max: 15, onLimit: json429 });
+  const limitResend = createLimiter({ name: "m-resend", windowMs: 60 * 60 * 1000, max: 6, onLimit: json429 });
+  const limitForgotIp = createLimiter({ name: "m-forgot-ip", windowMs: 60 * 60 * 1000, max: 10, onLimit: json429 });
+  const limitForgotEmail = createLimiter({ name: "m-forgot-email", windowMs: 60 * 60 * 1000, max: 3, key: lowerField("email"), onLimit: json429 });
+  const limitVerifyIp = createLimiter({ name: "m-verify-ip", windowMs: 15 * 60 * 1000, max: 30, onLimit: json429 });
+  const wrongCodes = new Map(); // userId -> wrong guesses for the current code
+  const MAX_CODE_ATTEMPTS = 5;
 
   // ── helpers ──────────────────────────────────────────────────────────
   function fail(res, status, error, extra) {
@@ -48,8 +63,9 @@ module.exports = function createMobileRouter(deps) {
   async function issueAndSendCode(userId, email) {
     const code = generateCode();
     await db.query("UPDATE tbl_users SET verificationCode = ? WHERE IDuser = ?", [Number(code), userId]);
+    wrongCodes.delete(userId);
     const sent = await sendVerificationEmail(email, code);
-    if (!sent) console.log("Mobile: verification email failed for", email);
+    if (!sent) console.error("Mobile: verification email failed for user", userId);
     return pendingToken(userId, email);
   }
 
@@ -76,6 +92,7 @@ module.exports = function createMobileRouter(deps) {
   // ── LOGIN ────────────────────────────────────────────────────────────
   router.post(
     "/auth/login",
+    limitLoginIp, limitLoginAcct,
     [
       check("email").trim().exists({ checkFalsy: true }).withMessage("Email is required")
         .isEmail().withMessage("Invalid email format"),
@@ -93,6 +110,7 @@ module.exports = function createMobileRouter(deps) {
         const row = rows[0];
         const { match, needsRehash } = row ? await verifyPassword(password, row.password) : { match: false, needsRehash: false };
         if (!match) return fail(res, 401, "Invalid email or password. Try again.");
+        limitLoginAcct.reset(String(email).trim().toLowerCase());
         if (needsRehash) {
           try { await upgradeToHash(connection, row.IDuser, password); }
           catch (e) { console.error("Mobile password upgrade failed:", e.message); }
@@ -118,6 +136,7 @@ module.exports = function createMobileRouter(deps) {
   // ── REGISTER ─────────────────────────────────────────────────────────
   router.post(
     "/auth/register",
+    limitRegister,
     [
       check("username").trim()
         .exists({ checkFalsy: true }).withMessage("Username is required")
@@ -169,6 +188,7 @@ module.exports = function createMobileRouter(deps) {
   // ── VERIFY EMAIL CODE ────────────────────────────────────────────────
   router.post(
     "/auth/verify",
+    limitVerifyIp,
     [
       check("pendingToken").exists({ checkFalsy: true }).withMessage("Your sign-up has expired. Please register again."),
       check("code").trim().matches(/^\d{6}$/).withMessage("Please enter the 6-digit code."),
@@ -186,9 +206,15 @@ module.exports = function createMobileRouter(deps) {
         const row = rows[0];
         if (!row) return fail(res, 410, "Your sign-up has expired. Please register again.", { expired: true });
         if (Number(row.isConfirmed) !== 1) {
+          const tries = wrongCodes.get(row.IDuser) || 0;
+          if (tries >= MAX_CODE_ATTEMPTS) {
+            return fail(res, 429, 'Too many wrong codes. Tap "Send code again" for a new one.');
+          }
           if (Number(row.verificationCode) !== Number(req.body.code)) {
+            wrongCodes.set(row.IDuser, tries + 1);
             return fail(res, 400, "Invalid code. Please try again.");
           }
+          wrongCodes.delete(row.IDuser);
           await db.query("UPDATE tbl_users SET isConfirmed = 1 WHERE IDuser = ?", [row.IDuser]);
         }
         res.json({ token: accessToken(row), user: publicUser(row), isNewUser: true });
@@ -200,7 +226,7 @@ module.exports = function createMobileRouter(deps) {
   );
 
   // ── RESEND CODE ──────────────────────────────────────────────────────
-  router.post("/auth/resend", async (req, res) => {
+  router.post("/auth/resend", limitResend, async (req, res) => {
     // Allow resending for an expired pending token too (that's the point), but
     // only if its signature is genuine: check signature/type, ignore expiry.
     const raw = String(req.body.pendingToken || "");
@@ -220,7 +246,7 @@ module.exports = function createMobileRouter(deps) {
   // ── FORGOT PASSWORD ──────────────────────────────────────────────────
   // Emails the same reset link as the website; the reset itself happens on the
   // web page the link opens.
-  router.post("/auth/forgot-password", async (req, res) => {
+  router.post("/auth/forgot-password", limitForgotIp, limitForgotEmail, async (req, res) => {
     const email = String(req.body.email || "").trim();
     const generic = { message: "If an account with that email exists, a reset link has been sent." };
     if (!email) return fail(res, 400, "Please enter your email.");
@@ -232,14 +258,14 @@ module.exports = function createMobileRouter(deps) {
         "UPDATE tbl_users SET resetToken = ?, resetTokenExpires = ? WHERE IDuser = ?",
         [token, new Date(Date.now() + 3600000), rows[0].IDuser]
       );
-      const base = res.locals.siteUrl || (req.protocol + "://" + req.get("host"));
+      const base = siteBase(req);
       const link = base + "/auth/reset-password?token=" + token;
       await sendEmail({
         to: email,
         subject: "Reset your Atlasphere password",
         html: '<div style="font-family:Arial;max-width:480px;margin:0 auto;padding:32px">' +
           '<h1 style="color:#0B3856">Reset your password</h1>' +
-          '<p style="font-size:16px;color:#555">Hi ' + rows[0].username + ', tap the button below to reset your password. This link expires in 1 hour.</p>' +
+          '<p style="font-size:16px;color:#555">Hi ' + escapeHtml(rows[0].username) + ', tap the button below to reset your password. This link expires in 1 hour.</p>' +
           '<div style="text-align:center;margin:32px 0"><a href="' + link + '" style="display:inline-block;padding:14px 40px;background:#E8933A;color:#fff;text-decoration:none;border-radius:30px;font-weight:700;font-size:16px">Reset Password</a></div></div>',
       }).catch((e) => console.error("Mobile reset email error:", e.message));
       res.json(generic);

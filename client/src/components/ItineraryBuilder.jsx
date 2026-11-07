@@ -33,10 +33,15 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
 
   useEffect(() => {
     if (!gid || !isActive) return;
-    // Reuse existing socket if possible
-    if (window.io) {
-      var socket = window.io();
+    let socket = null;
+    let cancelled = false;
+
+    function start() {
+      if (cancelled || socket || !window.io) return;
+      socket = window.io();
       socketRef.current = socket;
+      // Listen to this trip's room (re-sent after reconnects).
+      socket.on('connect', function() { socket.emit('watch-group', { groupId: gid }); });
 
       socket.on('itinerary-update', function(data) {
         if (String(data.groupId) !== String(gid)) return;
@@ -64,10 +69,28 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
         setTimeout(() => { isRemoteUpdate.current = false; }, 0);
       });
 
-      return () => {
-        socket.off('itinerary-update');
-      };
     }
+
+    // The socket library may not be on the page yet if the chat tab hasn't
+    // been opened; load it the same way the chat does.
+    if (window.io) start();
+    else {
+      let script = document.querySelector('script[src="/socket.io/socket.io.js"]');
+      if (!script) {
+        script = document.createElement('script');
+        script.src = '/socket.io/socket.io.js';
+        document.head.appendChild(script);
+      }
+      script.addEventListener('load', start);
+      var poll = setInterval(function() { if (window.io) { clearInterval(poll); start(); } }, 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (poll) clearInterval(poll);
+      if (socket) { socket.off('itinerary-update'); socket.disconnect(); }
+      if (socketRef.current === socket) socketRef.current = null;
+    };
   }, [gid, isActive]);
 
   const emitUpdate = useCallback((data) => {
