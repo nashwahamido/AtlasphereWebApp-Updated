@@ -58,7 +58,7 @@
 .ib-schedule { min-height: 500px; overflow-y: auto; max-height: calc(100vh - 160px); }
 .ib-week { display: flex; margin-bottom: 16px; }
 .ib-week__day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; cursor: pointer; border-radius: 12px; transition: all 0.2s; }
-.ib-week__day:hover { background: var(--ib-input-bg); }
+@media (hover: hover) { .ib-week__day:not(.ib-week__day--active):hover { background: var(--ib-input-bg); } }
 .ib-week__num { font-size: 17px; font-weight: 700; color: var(--ib-text); }
 .ib-week__label { font-size: 11px; font-weight: 500; color: var(--ib-text-muted); }
 .ib-week__day--active { background: var(--ib-accent); border-radius: 14px; position: relative; }

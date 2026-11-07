@@ -141,7 +141,8 @@ function hashString(s) {
 
 // Give every card an attractive, on-city photo. Matched places get their own
 // photo; the rest get a varied photo of the destination city itself.
-async function attachPexelsImages(items, city) {
+async function attachPexelsImages(items, city, photoCap) {
+  var cap = typeof photoCap === "number" ? photoCap : PHOTO_LOOKUP_CAP;
   var apiKey = (process.env.PEXELS_API_KEY || "").trim();
   if (!apiKey) {
     console.error("Pexels not configured — set PEXELS_API_KEY (using category images).");
@@ -156,7 +157,7 @@ async function attachPexelsImages(items, city) {
   }
 
   // Per-place lookups for the first N places (parallel, capped).
-  var head = items.slice(0, PHOTO_LOOKUP_CAP);
+  var head = items.slice(0, cap);
   await Promise.all(head.map(async function (item) {
     var photos = await pexelsSearch(item.name + " " + city, 1);
     var src = photos.length ? pickSrc(photos[0]) : null;
@@ -164,7 +165,7 @@ async function attachPexelsImages(items, city) {
   }));
 
   // Everything else: a varied city photo (keep category image if no pool).
-  items.slice(PHOTO_LOOKUP_CAP).forEach(function (item) {
+  items.slice(cap).forEach(function (item) {
     var src = cityFallback(item.id);
     if (src) item.image = src;
   });
@@ -221,7 +222,8 @@ async function fetchPlacesUncached(city) {
 // Returns the shape the frontend already expects:
 // { id, name, tags, description, image, rating, location }, re-ranked so the
 // places matching the user's selected activity tags come first.
-async function getRecommendations(city, preferences) {
+async function getRecommendations(city, preferences, opts) {
+  var options = opts || {};
   var features = await fetchPlaces(city);
   var prefList = preferences || [];
   var seenNames = {};
@@ -260,7 +262,34 @@ async function getRecommendations(city, preferences) {
     .sort(function (a, b) { return b.score - a.score; })
     .map(function (entry) { return entry.item; });
 
-  return attachPexelsImages(ranked, city);
+  if (options.skipImages) return ranked;
+  return attachPexelsImages(ranked, city, options.photoCap);
 }
 
-module.exports = { getRecommendations, inferTags, fetchPlaces, looksLikeCode, describe, openingHoursOf };
+// Recommendations for a trip with several cities: each city's best matches,
+// interleaved so every city shows up, with the photo lookups shared out so
+// the Pexels rate limit holds however many cities there are.
+async function getRecommendationsForCities(cities, preferences, limit) {
+  var list = cities.slice(0, 6);
+  if (list.length <= 1) return getRecommendations(list[0], preferences);
+  var total = limit || 50;
+  var perCity = Math.ceil(total / list.length);
+  var lists = await Promise.all(list.map(function (city) {
+    return getRecommendations(city, preferences, { skipImages: true })
+      .then(function (items) { return items.slice(0, perCity); })
+      .catch(function (e) { console.error("Recommendations failed for " + city + ":", e.message); return []; });
+  }));
+  var photoCap = Math.max(4, Math.ceil(PHOTO_LOOKUP_CAP / list.length));
+  await Promise.all(lists.map(function (items, i) { return attachPexelsImages(items, list[i], photoCap); }));
+  var mixed = [];
+  for (var round = 0; mixed.length < total; round++) {
+    var added = false;
+    lists.forEach(function (items) {
+      if (items[round] && mixed.length < total) { mixed.push(items[round]); added = true; }
+    });
+    if (!added) break;
+  }
+  return mixed;
+}
+
+module.exports = { getRecommendations, getRecommendationsForCities, inferTags, fetchPlaces, looksLikeCode, describe, openingHoursOf };

@@ -22,7 +22,7 @@ function formatDuration(dur) {
   return h + 'h' + m;
 }
 
-const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDays = 7, isActive = false }) => {
+const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDays = 7, isActive = false, cities = [] }) => {
   const today = new Date();
   const storageKey = 'itinerary-' + (tripId || 'default');
   const gid = groupId || tripId;
@@ -58,6 +58,8 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             delete dayData[data.timeSlot];
             return { ...prev, [data.dayIndex]: dayData };
           });
+        } else if (data.action === 'day-city') {
+          setDayCities(prev => ({ ...prev, [data.dayIndex]: data.city }));
         } else if (data.action === 'dates') {
           setRangeStart(data.rangeStart);
           setRangeEnd(data.rangeEnd);
@@ -236,28 +238,77 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
     const first = weekDays[0], last = weekDays[weekDays.length - 1];
     return { start: isoFromParts(first.year, first.month, first.num), end: isoFromParts(last.year, last.month, last.num) };
   }, [weekDays]);
-  const [destInfo, setDestInfo] = useState(null);
-  const [destPlaces, setDestPlaces] = useState(null);
+  // Which city each day is in. Only days someone set are stored; the rest
+  // follow the day before (day 1 defaults to the trip's first city).
+  const tripCities = cities && cities.length ? cities : [];
+  const citiesKey = tripCities.join(',');
+  const [dayCities, setDayCities] = useState({});
+  useEffect(() => {
+    if (!gid || !isActive || tripCities.length < 2) return;
+    let cancelled = false;
+    fetch('/api/itinerary/day-cities?groupId=' + gid)
+      .then(r => r.json())
+      .then(rows => {
+        if (cancelled || !Array.isArray(rows)) return;
+        const m = {};
+        rows.forEach(r => { m[r.dayIndex] = r.city; });
+        setDayCities(m);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [gid, isActive, citiesKey]);
+  const cityForDay = (i) => {
+    if (tripCities.length < 2) return tripCities[0] || null;
+    for (let j = i; j >= 0; j--) if (dayCities[j] && tripCities.indexOf(dayCities[j]) !== -1) return dayCities[j];
+    return tripCities[0];
+  };
+  const usedCities = useMemo(() => {
+    if (tripCities.length < 2) return [null]; // one city: the server's default
+    const set = [];
+    weekDays.forEach((d, i) => { const c = cityForDay(i); if (set.indexOf(c) === -1) set.push(c); });
+    return set.length ? set : [tripCities[0]];
+  }, [weekDays, dayCities, citiesKey]);
+  const usedKey = usedCities.join('|');
+
+  const [destInfo, setDestInfo] = useState({});   // city → overview
+  const [destPlaces, setDestPlaces] = useState({}); // city → places
   useEffect(() => {
     if (!gid || !isActive || !tripRange) return;
     let cancelled = false;
     const t = setTimeout(() => {
-      getJson(destinationUrl(gid, null, tripRange)).then(d => { if (!cancelled) setDestInfo(d); }).catch(() => {});
-      getJson(destinationUrl(gid, 'places', tripRange)).then(d => { if (!cancelled) setDestPlaces(d); }).catch(() => {});
+      usedCities.forEach(c => {
+        const key = c || '';
+        getJson(destinationUrl(gid, null, tripRange, c)).then(d => { if (!cancelled) setDestInfo(prev => ({ ...prev, [key]: d })); }).catch(() => {});
+        getJson(destinationUrl(gid, 'places', tripRange, c)).then(d => { if (!cancelled) setDestPlaces(prev => ({ ...prev, [key]: d })); }).catch(() => {});
+      });
     }, 400); // wait for the date picking to settle
     return () => { cancelled = true; clearTimeout(t); };
-  }, [gid, isActive, tripRange]);
-  const dayInfoByDate = useMemo(() => {
-    const m = {};
-    if (destInfo && destInfo.days) destInfo.days.forEach(d => { m[d.date] = d; });
-    return m;
-  }, [destInfo]);
-  const placeByName = useMemo(() => placesByName(destPlaces && destPlaces.places), [destPlaces]);
+  }, [gid, isActive, tripRange, usedKey]);
+  const cityKey = (i) => (tripCities.length < 2 ? '' : cityForDay(i));
   const dateOfDay = (i) => { const d = weekDays[i]; return d ? isoFromParts(d.year, d.month, d.num) : null; };
+  const dayInfo = (i) => {
+    const info = destInfo[cityKey(i)];
+    const date = dateOfDay(i);
+    return info && info.days ? info.days.find(d => d.date === date) || null : null;
+  };
+  const placeMaps = useMemo(() => {
+    const m = {};
+    Object.keys(destPlaces).forEach(k => { m[k] = placesByName(destPlaces[k] && destPlaces[k].places); });
+    return m;
+  }, [destPlaces]);
   const closedPlace = (name, dayIdx) => {
-    const p = placeByName[String(name || '').trim().toLowerCase()];
+    const map = placeMaps[cityKey(dayIdx)] || {};
+    const p = map[String(name || '').trim().toLowerCase()];
     const date = dateOfDay(dayIdx);
     return p && date && p.closedOn.indexOf(date) !== -1 ? p : null;
+  };
+  const setCityForDay = (i, city) => {
+    setDayCities(prev => ({ ...prev, [i]: city }));
+    fetch('/api/itinerary/day-cities', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId: gid, dayIndex: i, city }),
+    }).catch(() => {});
+    emitUpdate({ action: 'day-city', dayIndex: i, city });
   };
 
   const [allBlocks, setAllBlocks] = useState({});
@@ -758,12 +809,15 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
             {weekDays.map((d, i) => (
               <div key={i}
                 ref={activeDay === i ? activeDayRef : null}
-                className={`ib-week__day${activeDay === i ? ' ib-week__day--active' : ''}${daysWithBlocks[i] ? ' ib-week__day--has-plans' : ''}${(dayInfoByDate[dateOfDay(i)] || {}).holidays && dayInfoByDate[dateOfDay(i)].holidays.length ? ' ib-week__day--holiday' : ''}`}
+                className={`ib-week__day${activeDay === i ? ' ib-week__day--active' : ''}${daysWithBlocks[i] ? ' ib-week__day--has-plans' : ''}${(dayInfo(i) || {}).holidays && dayInfo(i).holidays.length ? ' ib-week__day--holiday' : ''}`}
                 onClick={() => setActiveDay(i)}>
                 <span className="ib-week__num">{d.num}</span>
                 <span className="ib-week__label">{d.label}</span>
+                {tripCities.length > 1 && (i === 0 || cityForDay(i) !== cityForDay(i - 1)) && (
+                  <span className="ib-week__city" title={cityForDay(i)}>{cityForDay(i)}</span>
+                )}
                 {(() => {
-                  const info = dayInfoByDate[dateOfDay(i)];
+                  const info = dayInfo(i);
                   return info && info.weather ? <span className="ib-week__wx" title={dayLabel(info.weather)}>{weatherIcon(info.weather.kind)} {temp(info.weather.max)}</span> : null;
                 })()}
               </div>
@@ -775,15 +829,25 @@ const ItineraryBuilder = ({ tripId = null, groupId = null, onSave = null, tripDa
           </div>
         )}
         {(() => {
-          const info = dayInfoByDate[dateOfDay(activeDay)];
-          if (!info) return null;
-          const w = info.weather;
+          const info = dayInfo(activeDay);
+          const multi = tripCities.length > 1;
+          if (!info && !multi) return null;
+          const w = info && info.weather;
           const planned = Object.values(dayBlocks).filter(b => b && closedPlace(b.name || b.text, activeDay)).length;
-          const busy = info.busy && info.busy.level !== 'normal' ? busyText(info.busy) : '';
+          const busy = info && info.busy && info.busy.level !== 'normal' ? busyText(info.busy) : '';
           return (
             <div className="ib-dayhint">
+              {multi && (
+                <label className="ib-daycity">
+                  <span aria-hidden="true">📍</span>
+                  <span className="ib-visually-hidden">City for this day</span>
+                  <select value={cityForDay(activeDay)} onChange={e => setCityForDay(activeDay, e.target.value)}>
+                    {tripCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+              )}
               {w && <span>{weatherIcon(w.kind)} <b>{dayLabel(w)}</b> {temp(w.max)} / {temp(w.min)}{typeof w.rainChance === 'number' ? ' · 💧 ' + w.rainChance + '%' : ''}{w.source === 'typical' ? ' (typical)' : ''}</span>}
-              {info.holidays.map(h => <span key={h.name} className="ib-dayhint__holiday">🎉 {h.name}{h.regional ? ' (some regions)' : ''}</span>)}
+              {info && info.holidays.map(h => <span key={h.name} className="ib-dayhint__holiday">🎉 {h.name}{h.regional ? ' (some regions)' : ''}</span>)}
               {busy && <span>👥 {busy}: busier than usual</span>}
               {planned > 0 && <span>⚠️ {planned} planned {planned === 1 ? 'place is' : 'places are'} closed</span>}
             </div>

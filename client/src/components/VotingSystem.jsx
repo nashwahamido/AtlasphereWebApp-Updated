@@ -15,7 +15,7 @@ var icons = {
 };
 
 //main activity card will show image, tags, description and vote buttons
-function ActivityCard({ activity, vote, onVote, onShare, animation, closure }) {
+function ActivityCard({ activity, vote, onVote, onShare, animation, closure, showCity }) {
   return (
     <div className={"vote-card" + (animation ? " " + animation : "")}>
       <img src={activity.image} alt={activity.name} className="vote-card-image" />
@@ -39,6 +39,7 @@ function ActivityCard({ activity, vote, onVote, onShare, animation, closure }) {
         </div>
 
         <div className="activity-copy">
+          {showCity && activity.location && <span className="activity-city">📍 {activity.location}</span>}
           <h2>{activity.name}</h2>
           <p>{activity.description}</p>
           {closure && <span className="vote-closed" title={closure.hours || ""}>{closure.text}</span>}
@@ -153,6 +154,13 @@ function Carousel({ children, active, setActive }) {
 
 export default function VotingSystem(props) {
   var destination = props.destination || "Rome";
+  // Every city on the trip (just the destination for one-city trips).
+  var cities = props.cities && props.cities.length ? props.cities : [destination];
+  var citiesKey = cities.join(",");
+  var multiCity = cities.length > 1;
+  var placeLabel = multiCity ? cities.slice(0, -1).join(", ") + " and " + cities[cities.length - 1] : destination;
+  var cityFilterState = useState("all");
+  var cityFilter = cityFilterState[0] === "all" || cities.indexOf(cityFilterState[0]) !== -1 ? cityFilterState[0] : "all";
   var groupId = props.groupId || "";
   var userId = props.userId || "";
   var userName = props.userName || "";
@@ -212,8 +220,7 @@ export default function VotingSystem(props) {
   useEffect(function () {
     setLoading(true);
     fetch(
-      "/api/recommendations?city=" +
-        encodeURIComponent(destination) +
+      "/api/recommendations?" + (multiCity ? "cities=" + encodeURIComponent(citiesKey) : "city=" + encodeURIComponent(destination)) +
         "&activities=" +
         encodeURIComponent(preferences.join(","))
     )
@@ -230,7 +237,7 @@ export default function VotingSystem(props) {
         setError("Could not load recommendations right now.");
         setLoading(false);
       });
-  }, [preferences, destination]);
+  }, [preferences, destination, citiesKey]);
 
   //loads all the existing votes the user has already made for this group
   useEffect(function () {
@@ -252,9 +259,13 @@ export default function VotingSystem(props) {
   useEffect(function () {
     if (!groupId) return;
     var cancelled = false;
-    getJson(destinationUrl(groupId, "places")).then(function (info) {
-      if (cancelled || !info || !info.tripDates) return;
+    Promise.all(cities.map(function (c) {
+      return getJson(destinationUrl(groupId, "places", null, multiCity ? c : null)).catch(function () { return null; });
+    })).then(function (infos) {
+      if (cancelled) return;
       var map = {};
+      infos.forEach(function (info) {
+      if (!info || !info.tripDates) return;
       var total = info.dates.length;
       info.places.forEach(function (p) {
         if (!p.closedOn.length) return;
@@ -267,15 +278,34 @@ export default function VotingSystem(props) {
         map["id:" + p.id] = entry;
         map["name:" + String(p.name).trim().toLowerCase()] = entry;
       });
+      });
       setClosures(map);
     }).catch(function () {});
     return function () { cancelled = true; };
-  }, [groupId]);
+  }, [groupId, citiesKey]);
 
   //filters out any activities the user has already voted on
-  var visibleActivities = useMemo(function () {
+  var unvoted = useMemo(function () {
     return activities.filter(function (a) { return !votedIds[a.id]; });
   }, [activities, votedIds]);
+  var visibleActivities = useMemo(function () {
+    return cityFilter === "all" ? unvoted : unvoted.filter(function (a) { return a.location === cityFilter; });
+  }, [unvoted, cityFilter]);
+
+  var cityChips = multiCity ? (
+    <div className="vote-cities" role="tablist" aria-label="Filter by city">
+      {["all"].concat(cities).map(function (c) {
+        var on = c === cityFilter;
+        var count = c === "all" ? unvoted.length : unvoted.filter(function (a) { return a.location === c; }).length;
+        return (
+          <button key={c} type="button" role="tab" aria-selected={on} className={"vote-city" + (on ? " vote-city--active" : "")}
+            onClick={function () { cityFilterState[1](c); setActive(0); }}>
+            {c === "all" ? "All cities" : c} <span className="vote-city__count">{count}</span>
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
 
   var safeActive = visibleActivities.length === 0 ? 0 : Math.min(active, visibleActivities.length - 1);
 
@@ -391,7 +421,7 @@ var handleVote = function (activity, choice) {
         <section className="voting-section">
           <header className="voting-header">
             <h1>Recommended</h1>
-            <p>Loading things to do in {destination}...</p>
+            <p>Loading things to do in {placeLabel}...</p>
           </header>
         </section>
       </main>
@@ -412,7 +442,7 @@ var handleVote = function (activity, choice) {
   }
 
   //for when all activities have been voted on
-  if (visibleActivities.length === 0 && activities.length > 0) {
+  if (unvoted.length === 0 && activities.length > 0) {
     return (
       <main className="voting-page">
         <section className="voting-section">
@@ -431,7 +461,7 @@ var handleVote = function (activity, choice) {
         <section className="voting-section">
           <header className="voting-header">
             <h1>Recommended</h1>
-            <p>No recommendations found for {destination} yet.</p>
+            <p>No recommendations found for {placeLabel} yet.</p>
           </header>
         </section>
       </main>
@@ -443,8 +473,12 @@ var handleVote = function (activity, choice) {
       <section className="voting-section">
         <header className="voting-header">
           <h1>Recommended</h1>
-          <p>Vote on things to do in {destination}. Upvote, bookmark, or dismiss.</p>
+          <p>Vote on things to do in {placeLabel}. Upvote, bookmark, or dismiss.</p>
         </header>
+        {cityChips}
+        {visibleActivities.length === 0 && (
+          <p className="vote-city-empty">You've voted on everything in {cityFilter}. Pick another city above.</p>
+        )}
 
         <Carousel active={safeActive} setActive={setActive}>
           {visibleActivities.map(function (activity) {
@@ -453,6 +487,7 @@ var handleVote = function (activity, choice) {
                 key={activity.id}
                 activity={activity}
                 vote={null}
+                showCity={multiCity}
                 closure={closures["id:" + activity.id] || closures["name:" + String(activity.name).trim().toLowerCase()] || null}
                 onVote={function (choice) {
                   handleVote(activity, choice);

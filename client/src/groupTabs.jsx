@@ -29,6 +29,13 @@ if (mount) {
   var userAvatar = mount.dataset.userAvatar || '';
   var groupName = mount.dataset.groupName;
   var groupDestination = mount.dataset.groupDestination;
+  var groupCities = mount.dataset.groupCities || '';
+  // "Seoul,Busan" → ['Seoul', 'Busan'] (falls back to the main destination).
+  var citiesOf = function(list, fallback) {
+    var out = String(list || '').split(',').map(function(c) { return c.trim(); })
+      .filter(function(c, i, a) { return c && a.indexOf(c) === i; });
+    return out.length ? out : (fallback ? [fallback] : []);
+  };
   var groupPhoto = mount.dataset.groupPhoto || '';
   var tripDays = parseInt(mount.dataset.tripDays) || 7;
   var groupActivities = mount.dataset.groupActivities || "";
@@ -52,6 +59,7 @@ if (mount) {
       name: groupName || 'Rome',
       color: '#3B5F8A',
       destination: groupDestination || '',
+      cities: groupCities,
       photo: groupPhoto || '',
       flag: groupFlag || ''
     });
@@ -97,6 +105,7 @@ if (mount) {
           React.createElement(VotingSystem, {
             key: 'vote-' + (activeGroup.id || groupId),
             destination: activeGroup.destination || groupDestination,
+            cities: citiesOf(activeGroup.cities, activeGroup.destination || groupDestination),
             groupId: activeGroup.id || groupId,
             savedActivities: groupActivities,
             userId: userId,
@@ -115,6 +124,7 @@ if (mount) {
             tripId: activeGroup.id || groupId,
             groupId: activeGroup.id || groupId,
             tripDays: tripDays,
+            cities: citiesOf(activeGroup.cities, activeGroup.destination || groupDestination),
             isActive: true
           }),
           React.createElement(ChatOverlay, Object.assign({
@@ -130,6 +140,7 @@ if (mount) {
               key: 'dest-' + (activeGroup.id || groupId),
               groupId: activeGroup.id || groupId,
               destination: activeGroup.destination || groupDestination,
+              cities: citiesOf(activeGroup.cities, activeGroup.destination || groupDestination),
               flag: activeGroup.flag || groupFlag
             })
           ),

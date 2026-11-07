@@ -36,6 +36,11 @@ function Header({ info, flag }) {
   var loc = info.location;
   var clock = useClock(loc.timezone);
   var cur = info.current;
+  // Day or night at the destination (the backup forecast doesn't say).
+  var isDay = cur && cur.isDay !== null && cur.isDay !== undefined ? cur.isDay : (function () {
+    try { var h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: loc.timezone, hour: '2-digit', hourCycle: 'h23' }).format(new Date())); return h >= 6 && h < 19; }
+    catch (e) { return null; }
+  })();
   return (
     <div className="dt-card dt-head">
       <div className="dt-head__place">
@@ -48,10 +53,10 @@ function Header({ info, flag }) {
         )}
       </div>
       {cur && (
-        <div className="dt-head__now" title={weatherLabel(cur.kind)}>
-          <span className="dt-head__now-icon" aria-hidden="true">{weatherIcon(cur.kind, cur.isDay)}</span>
+        <div className="dt-head__now" title={weatherLabel(cur.kind, isDay)}>
+          <span className="dt-head__now-icon" aria-hidden="true">{weatherIcon(cur.kind, isDay)}</span>
           <span className="dt-head__now-temp">{temp(cur.temp)}</span>
-          <span className="dt-head__now-label">{weatherLabel(cur.kind)} now</span>
+          <span className="dt-head__now-label">{weatherLabel(cur.kind, isDay)} now</span>
         </div>
       )}
     </div>
@@ -174,7 +179,7 @@ function Crowds({ placesInfo, day, theme }) {
         Busier areas are where the best-known sights cluster. This is an estimate from place popularity, weekends, holidays and the season, not live data.
       </p>
       {placesInfo.location && places.length > 0
-        ? <div className={'dt-mapwrap dt-mapwrap--' + theme}><CrowdMap places={places} day={day} theme={theme} location={placesInfo.location} /></div>
+        ? <div className={'dt-mapwrap dt-mapwrap--' + theme}><CrowdMap key={placesInfo.location.lat + ',' + placesInfo.location.lon} places={places} day={day} theme={theme} location={placesInfo.location} /></div>
         : <p className="dt-empty">We couldn’t load places for this city right now.</p>}
       <div className="dt-legend" aria-hidden="true">
         <span>Quieter</span><span className="dt-legend__bar" /><span>Busier</span>
@@ -239,18 +244,29 @@ export default function DestinationTab(props) {
   var placesState = useState(null);
   var errState = useState('');
   var selState = useState(null);
+  var cities = props.cities && props.cities.length ? props.cities : [props.destination].filter(Boolean);
+  var cityState = useState(cities[0] || '');
+  var city = cities.indexOf(cityState[0]) !== -1 ? cityState[0] : (cities[0] || '');
   var info = infoState[0], placesInfo = placesState[0], error = errState[0];
 
   useEffect(function () {
     if (!groupId) return;
     var cancelled = false;
     infoState[1](null); placesState[1](null); errState[1]('');
-    getJson(destinationUrl(groupId), true).then(function (d) { if (!cancelled) infoState[1](d); })
+    getJson(destinationUrl(groupId, null, null, city), true).then(function (d) { if (!cancelled) infoState[1](d); })
       .catch(function () { if (!cancelled) errState[1]('We couldn’t load destination info right now. Try again in a minute.'); });
-    getJson(destinationUrl(groupId, 'places'), true).then(function (d) { if (!cancelled) placesState[1](d); })
+    getJson(destinationUrl(groupId, 'places', null, city), true).then(function (d) { if (!cancelled) placesState[1](d); })
       .catch(function () { if (!cancelled) placesState[1]({ places: [], days: [], dates: [], location: null }); });
     return function () { cancelled = true; };
-  }, [groupId]);
+  }, [groupId, city]);
+
+  var cityChips = cities.length > 1 ? (
+    <div className="dt-cities" role="tablist" aria-label="Cities on this trip">
+      {cities.map(function (c) {
+        return <button key={c} type="button" role="tab" aria-selected={c === city} className={'dt-city' + (c === city ? ' dt-city--active' : '')} onClick={function () { cityState[1](c); }}>📍 {c}</button>;
+      })}
+    </div>
+  ) : null;
 
   // Day cards come from the trip; without dates, the next 7 days from the places info.
   var days = useMemo(function () {
@@ -267,12 +283,13 @@ export default function DestinationTab(props) {
     return m;
   }, [placesInfo]);
 
-  if (error) return <div className="dt"><div className="dt-card"><p className="dt-empty">{error}</p></div></div>;
-  if (!info) return <div className="dt"><div className="dt-card dt-loading">Loading destination info…</div></div>;
-  if (!info.location) return <div className="dt"><div className="dt-card"><p className="dt-empty">We couldn’t find {props.destination || 'this destination'} on the map.</p></div></div>;
+  if (error) return <div className="dt">{cityChips}<div className="dt-card"><p className="dt-empty">{error}</p></div></div>;
+  if (!info) return <div className="dt">{cityChips}<div className="dt-card dt-loading">Loading {city || 'destination'} info…</div></div>;
+  if (!info.location) return <div className="dt">{cityChips}<div className="dt-card"><p className="dt-empty">We couldn’t find {city || 'this destination'} on the map.</p></div></div>;
 
   return (
     <div className="dt">
+      {cityChips}
       <Header info={info} flag={props.flag} />
 
       <div className="dt-card">

@@ -67,7 +67,7 @@ router.get("/api/my-groups", function (req, res) {
   var db = getDb(req);
   loadUserGroups(db, user.id, function (err, groups) {
     res.json(groups.map(function (g) {
-      return { id: g.id, name: g.name, destination: g.destination, flag: g.flag || "", color: g.color || "#3B5F8A", photo: g.photo || "" };
+      return { id: g.id, name: g.name, destination: g.destination, cities: (g.cities || []).join(","), flag: g.flag || "", color: g.color || "#3B5F8A", photo: g.photo || "" };
     }));
   });
 });

@@ -302,7 +302,8 @@ module.exports = function createDestination(opts) {
 
     const nowDate = now();
     const today = todayIn(loc.timezone, nowDate);
-    const dates = trip ? dateRange(trip.start, trip.end) : [];
+    // Without trip dates, show the coming week so there's still a forecast.
+    const dates = trip ? dateRange(trip.start, trip.end) : dateRange(today, addDays(today, 6));
 
     // Holidays: the trip's years, or the coming 12 months when there's no trip.
     const years = new Set(trip ? dates.map((d) => d.slice(0, 4)) : [today.slice(0, 4), String(Number(today.slice(0, 4)) + 1)]);

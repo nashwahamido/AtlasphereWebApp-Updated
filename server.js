@@ -10,7 +10,7 @@ const fs = require("fs");
 const axios = require("axios");
 const sharp = require("sharp");
 const { sendEmail } = require("./config/mailer");
-const { getRecommendations } = require("./config/places");
+const { getRecommendations, getRecommendationsForCities } = require("./config/places");
 const { verifyPassword, upgradeToHash } = require("./config/passwords");
 const security = require("./config/security");
 const { escapeHtml, siteBase } = security;
@@ -194,6 +194,17 @@ async function sendVerificationEmail(toEmail, code) {
     `,
   });
 }
+
+// A trip's cities, in the order they were picked (falls back to its main
+// destination).
+function tripCities(group) {
+  var list = String((group && group.cities) || "").split(",")
+    .map(function(c) { return c.trim(); })
+    .filter(function(c, i, a) { return c && a.indexOf(c) === i; });
+  if (!list.length && group && group.destination) list = [group.destination];
+  return list.slice(0, 12);
+}
+app.set("tripCities", tripCities);
 
 function requireAuth(req, res, next) {
   if (!req.session.user) {
@@ -1006,23 +1017,28 @@ app.use("/users", require("./routes/users"));
 // ── API Route ────────────────────────────────────────────────
 
 // Attraction recommendations come from Foursquare Places — see config/places.js.
+// ?city=Rome, or ?cities=Seoul,Busan,Jeju for a trip with several cities.
 app.get("/api/recommendations", requireAuth, async (req, res) => {
-  var city = req.query.city || "Rome";
+  var cities = String(req.query.cities || req.query.city || "Rome").split(",")
+    .map(function(c) { return c.trim().slice(0, 80); })
+    .filter(function(c, i, a) { return c && a.indexOf(c) === i; })
+    .slice(0, 6);
+  if (!cities.length) cities = ["Rome"];
 
   var preferences = req.query.activities
-    ? req.query.activities.split(",").map(function(s) {
+    ? String(req.query.activities).split(",").map(function(s) {
         return s.trim();
       }).filter(Boolean)
     : [];
 
-  console.log("Recommendations request:", { city: city, preferences: preferences });
-
   try {
-    var results = await getRecommendations(city, preferences);
+    var results = cities.length > 1
+      ? await getRecommendationsForCities(cities, preferences, 50)
+      : await getRecommendations(cities[0], preferences);
     res.json(results.slice(0, 50));
   } catch (error) {
     console.error(
-      "Foursquare API error:",
+      "Recommendations error:",
       error.response ? JSON.stringify(error.response.data) : error.message
     );
     res.status(500).json({ error: "Failed to fetch recommendations." });
@@ -1194,6 +1210,38 @@ app.get("/api/itinerary/dates", requireAuth, requireMember({ onMissing: function
       res.json(null);
     }
   );
+});
+
+// ── ITINERARY: which city each day is in ─────────────────────────────────
+// Only days that were set are stored; a day without one follows the day
+// before (the client works that out).
+app.get("/api/itinerary/day-cities", requireAuth, requireMember({ onMissing: function (req, res) { res.json([]); } }), (req, res) => {
+  connection.query(
+    "SELECT dayIndex, city FROM tbl_itinerary_day_cities WHERE groupId = ? ORDER BY dayIndex",
+    [req.query.groupId],
+    function(err, rows) { res.json(!err && rows ? rows : []); }
+  );
+});
+
+app.post("/api/itinerary/day-cities", requireAuth, requireMember(), (req, res) => {
+  var groupId = req.body.groupId;
+  var dayIndex = parseInt(req.body.dayIndex, 10);
+  var city = String(req.body.city || "").trim();
+  if (!(dayIndex >= 0 && dayIndex < 366) || !city) return res.status(400).json({ error: "Missing day or city" });
+  connection.query("SELECT destination, cities FROM tbl_groups WHERE id = ?", [groupId], function(gErr, gRows) {
+    if (gErr || !gRows || !gRows.length) return res.status(404).json({ error: "Trip not found" });
+    var allowed = tripCities(gRows[0]);
+    var match = allowed.find(function(c) { return c.toLowerCase() === city.toLowerCase(); });
+    if (!match) return res.status(400).json({ error: "That city isn't part of this trip." });
+    connection.query(
+      "INSERT INTO tbl_itinerary_day_cities (groupId, dayIndex, city) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE city = VALUES(city)",
+      [groupId, dayIndex, match],
+      function(err) {
+        if (err) { console.error("Day city save error:", err.message); return res.status(500).json({ error: "Failed" }); }
+        res.json({ success: true, dayIndex: dayIndex, city: match });
+      }
+    );
+  });
 });
 
 // ── ITINERARY COMMENTS API ────────────────────────────────────────────────
@@ -1685,6 +1733,16 @@ server.listen(PORT, '0.0.0.0', function() {
     function(err) {
       if (err) { console.error("Migration note (activityImage widen):", err.message); }
       else { console.log("Widened tbl_activity_votes.activityImage to VARCHAR(1024)"); }
+    }
+  );
+
+  connection.query(
+    "CREATE TABLE IF NOT EXISTS tbl_itinerary_day_cities (" +
+    "groupId BIGINT NOT NULL, dayIndex INT NOT NULL, city VARCHAR(100) NOT NULL, " +
+    "PRIMARY KEY (groupId, dayIndex))",
+    function(err) {
+      if (err) { console.error("Migration note (itinerary_day_cities):", err.message); }
+      else { console.log("Ensured tbl_itinerary_day_cities table exists"); }
     }
   );
 

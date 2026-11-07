@@ -46,14 +46,25 @@ module.exports = function createDestinationRouter(connection, opts) {
     }
   }
 
+  // The trip's cities; ?city= picks one of them (anything else is ignored,
+  // so the endpoint can't be used to look up arbitrary places).
+  function citiesOf(group) {
+    const list = String(group.cities || "").split(",").map((c) => c.trim()).filter((c, i, a) => c && a.indexOf(c) === i);
+    return list.length ? list : [group.destination || group.name].filter(Boolean);
+  }
+
   function handler(fn) {
     return async (req, res) => {
       try {
         const group = await loadGroup(req);
         if (!group) return res.status(404).json({ error: "Group not found." });
         const trip = await tripFor(req, group);
+        const cities = citiesOf(group);
+        const wanted = String(req.query.city || "").trim().toLowerCase();
+        const city = cities.find((c) => c.toLowerCase() === wanted) || cities[0];
         res.set("Cache-Control", "no-store"); // trip dates can change at any time
-        res.json(await fn(group, trip));
+        const out = await fn(Object.assign({}, group, { destination: city }), trip);
+        res.json(Object.assign({ cities, city }, out));
       } catch (err) {
         console.error("Destination info failed:", err.message);
         res.status(500).json({ error: "Couldn't load destination info right now." });

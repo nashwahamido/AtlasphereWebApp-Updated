@@ -27,6 +27,10 @@
   --dt-soft: rgba(0,0,0,0.04);
   --dt-holiday: #9333ea;
 }
+.dt-cities { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
+.dt-cities::-webkit-scrollbar { display: none; }
+.dt-city { flex: 0 0 auto; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--dt-border); background: var(--dt-card); color: var(--dt-text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.dt-city--active { background: var(--dt-accent); border-color: var(--dt-accent); color: #fff; }
 .dt-card { background: var(--dt-card); border: 1px solid var(--dt-border); border-radius: 18px; padding: 20px; box-shadow: var(--dt-shadow); min-width: 0; }
 .dt-loading, .dt-empty { color: var(--dt-muted); font-size: 14px; margin: 0; }
 
@@ -104,6 +108,12 @@
 .ib-week__day--active .ib-week__wx { color: #fff; }
 .ib-week__day--holiday .ib-week__num::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #c084fc; margin-left: 3px; vertical-align: top; }
 .ib-dayhint { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: -6px 0 14px; padding: 8px 12px; border-radius: 12px; background: var(--ib-input-bg); font-size: 12px; color: var(--ib-text-muted); }
+.ib-daycity { display: inline-flex; align-items: center; gap: 4px; }
+.ib-daycity select { font: inherit; font-size: 12px; font-weight: 600; color: var(--ib-text); background: transparent; border: 1px solid var(--ib-input-border); border-radius: 8px; padding: 3px 6px; cursor: pointer; }
+.ib-daycity select option { color: #1a1a2e; }
+.ib-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ib-week__city { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 700; color: var(--ib-accent); }
+.ib-week__day--active .ib-week__city { color: #fff; }
 .ib-dayhint b { color: var(--ib-text); font-weight: 600; }
 .ib-dayhint__holiday { color: #c084fc; font-weight: 600; }
 .ib-closed-badge { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,0.35); color: #fff; vertical-align: middle; white-space: nowrap; }

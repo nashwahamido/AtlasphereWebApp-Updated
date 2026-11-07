@@ -16,7 +16,10 @@ export function weatherIcon(kind, isDay) {
   if (kind === 'clear' && isDay === false) return '🌙';
   return (WEATHER[kind] || WEATHER.cloudy).icon;
 }
-export function weatherLabel(kind) { return (WEATHER[kind] || WEATHER.cloudy).label; }
+export function weatherLabel(kind, isDay) {
+  if (kind === 'clear' && isDay === false) return 'Clear';
+  return (WEATHER[kind] || WEATHER.cloudy).label;
+}
 
 // A typical (past years) day only says how often it rained, not if it's sunny.
 export function dayLabel(w) {
@@ -101,10 +104,12 @@ export function getJson(url, fresh) {
   return promise;
 }
 
-export function destinationUrl(groupId, kind, range) {
+export function destinationUrl(groupId, kind, range, city) {
   var url = '/api/destination/' + encodeURIComponent(groupId) + (kind === 'places' ? '/places' : '');
-  if (range && range.start && range.end) url += '?start=' + range.start + '&end=' + range.end;
-  return url;
+  var q = [];
+  if (range && range.start && range.end) q.push('start=' + range.start, 'end=' + range.end);
+  if (city) q.push('city=' + encodeURIComponent(city));
+  return url + (q.length ? '?' + q.join('&') : '');
 }
 
 // Places by lower-cased name → place (to match itinerary blocks and cards).
