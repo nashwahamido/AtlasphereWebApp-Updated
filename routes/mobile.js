@@ -9,6 +9,9 @@ const { verifyPassword, upgradeToHash } = require("../config/passwords");
 const createFriends = require("../services/friends");
 const { FriendError } = require("../services/friends");
 const { createLimiter, escapeHtml, siteBase } = require("../config/security");
+const createTrips = require("../services/trips");
+const { TripError, ACTIVITY_TAGS } = require("../services/trips");
+const countries = require("../data/countries");
 
 const ACCESS_TTL = 60 * 60 * 24 * 30; // 30 days
 const PENDING_TTL = 60 * 30;          // 30 minutes, same as the emailed code
@@ -314,6 +317,68 @@ module.exports = function createMobileRouter(deps) {
     if (!action) return next();
     return friendRoute(async () => ({ relationship: await action(me(req), req.params.id) }))(req, res);
   });
+
+  // ── TRIPS ────────────────────────────────────────────────────────────
+  // Same rules as the website: members only; the creator can delete.
+  const trips = createTrips(connection, { friends });
+  const limitJoin = createLimiter({ name: "m-join", windowMs: 60 * 60 * 1000, max: 30, key: (req) => String(me(req)), onLimit: json429 });
+  function tripRoute(handler) {
+    return async (req, res) => {
+      try {
+        res.json(await handler(req, res));
+      } catch (err) {
+        if (err instanceof TripError) return fail(res, err.status, err.message);
+        console.error("Mobile trips error:", err.message);
+        fail(res, 500, "Something went wrong. Please try again.");
+      }
+    };
+  }
+
+  // Countries and their cities for the "new trip" flow, plus the interests.
+  const countryList = countries.map((c) => ({ code: c.code, name: c.name, flag: c.flag, continent: c.continent, cities: c.cities }));
+  router.get("/countries", requireMobileAuth, (req, res) => {
+    res.set("Cache-Control", "private, max-age=86400");
+    res.json({ countries: countryList, interests: ACTIVITY_TAGS });
+  });
+
+  router.get("/trips", requireMobileAuth, tripRoute(async (req) => ({ trips: await trips.list(me(req)) })));
+  router.post("/trips", requireMobileAuth, tripRoute(async (req) => {
+    const id = await trips.create(req.mobileUser, req.body || {});
+    return { trip: await trips.detail(me(req), id, siteBase(req)) };
+  }));
+  router.post("/trips/join", requireMobileAuth, limitJoin, tripRoute(async (req) => {
+    const id = await trips.join(req.mobileUser, req.body && req.body.code);
+    return { trip: await trips.detail(me(req), id, siteBase(req)) };
+  }));
+  router.get("/trips/:id", requireMobileAuth, tripRoute(async (req) => ({ trip: await trips.detail(me(req), req.params.id, siteBase(req)) })));
+  router.post("/trips/:id/members", requireMobileAuth, tripRoute(async (req) => {
+    const out = await trips.addFriend(req.mobileUser, req.params.id, req.body && req.body.userId);
+    return Object.assign(out, { trip: await trips.detail(me(req), req.params.id, siteBase(req)) });
+  }));
+  router.post("/trips/:id/rename", requireMobileAuth, tripRoute(async (req) => {
+    await trips.rename(me(req), req.params.id, req.body && req.body.name);
+    return { trip: await trips.detail(me(req), req.params.id, siteBase(req)) };
+  }));
+  router.post("/trips/:id/interests", requireMobileAuth, tripRoute(async (req) => {
+    await trips.setInterests(me(req), req.params.id, req.body && req.body.interests);
+    return { trip: await trips.detail(me(req), req.params.id, siteBase(req)) };
+  }));
+  // Multipart upload, field "photo". Stored in the database like the website's.
+  router.post("/trips/:id/photo", requireMobileAuth, tripRoute(async (req) => {
+    await trips.assertMember(me(req), req.params.id);
+    const file = req.files && (req.files.photo || req.files.groupPhoto);
+    if (!file) throw new TripError(400, "Please choose a photo.");
+    let photoPath;
+    try {
+      photoPath = await req.app.get("images").saveUpload(file, { width: 800, height: 600, prefix: "group_" + String(req.params.id).replace(/\D/g, "") + "_" });
+    } catch (e) {
+      throw new TripError(400, "That file isn't a photo we can use.");
+    }
+    await trips.setPhoto(me(req), req.params.id, photoPath);
+    return { trip: await trips.detail(me(req), req.params.id, siteBase(req)) };
+  }));
+  router.post("/trips/:id/leave", requireMobileAuth, tripRoute(async (req) => { await trips.leave(me(req), req.params.id); return { ok: true }; }));
+  router.delete("/trips/:id", requireMobileAuth, tripRoute(async (req) => { await trips.remove(me(req), req.params.id); return { ok: true }; }));
 
   router.use((req, res) => fail(res, 404, "Not found."));
 

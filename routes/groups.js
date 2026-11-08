@@ -35,6 +35,10 @@ function loadGroup(db, groupId, callback) {
     if (err || rows.length === 0) return callback(err, null);
     var group = rows[0];
     group.cities = group.cities ? group.cities.split(",") : [];
+    // Interests are saved as JSON in `preferences`; the page reads `activities`.
+    if (!group.activities && group.preferences) {
+      try { var prefs = JSON.parse(group.preferences); if (Array.isArray(prefs)) group.activities = prefs.join(","); } catch (e) { /* ignore */ }
+    }
     db.query("SELECT userId, username, email FROM tbl_group_members WHERE groupId = ?", [groupId], function (err2, members) {
       group.members = members || [];
       callback(null, group);
