@@ -1003,6 +1003,7 @@ app.post("/groups/save-activities", requireAuth, requireMember(), (req, res) => 
 app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVerificationEmail, sendEmail, generateCode }));
 app.use(require("./routes/friends")(connection));
 app.use(require("./routes/destination")(connection));
+app.use(require("./routes/admin")(connection));
 // Help, Privacy and Terms pages (also linked from the mobile app).
 app.locals.supportEmail = process.env.SUPPORT_EMAIL || "atlasphere.app@gmail.com";
 var INFO_PAGES = { help: "Help", privacy: "Privacy Policy", terms: "Terms of Service" };
@@ -1743,6 +1744,20 @@ server.listen(PORT, '0.0.0.0', function() {
     function(err) {
       if (err) { console.error("Migration note (itinerary_day_cities):", err.message); }
       else { console.log("Ensured tbl_itinerary_day_cities table exists"); }
+    }
+  );
+
+  // Record when each account signs up (for the stats page). Accounts that
+  // existed before this column was added keep NULL: their date is unknown.
+  connection.query(
+    "ALTER TABLE tbl_users ADD COLUMN createdAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
+    function(err) {
+      if (err && err.code === 'ER_DUP_FIELDNAME') return; // already there
+      if (err) { console.error("Migration note (users.createdAt):", err.message); return; }
+      connection.query("UPDATE tbl_users SET createdAt = NULL", function(uErr) {
+        if (uErr) console.error("Migration note (users.createdAt reset):", uErr.message);
+        else console.log("Added createdAt column to tbl_users");
+      });
     }
   );
 
