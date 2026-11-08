@@ -218,3 +218,11 @@ test("unknown endpoints answer with JSON 404", async (t) => {
   assert.equal(res.status, 404);
   assert.ok(res.body.error);
 });
+
+test("trip invite codes are read from links or bare codes", () => {
+  const { inviteCodeFrom } = require("../services/trips");
+  assert.equal(inviteCodeFrom("https://atlasphere.up.railway.app/groups/join/9205b8bc1f32"), "9205b8bc1f32");
+  assert.equal(inviteCodeFrom("  9205b8bc1f32 "), "9205b8bc1f32");
+  assert.equal(inviteCodeFrom("nope!!"), null);
+  assert.equal(inviteCodeFrom(""), null);
+});
