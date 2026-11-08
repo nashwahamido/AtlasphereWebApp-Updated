@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <%- include('partials/head-meta') %>
+  <title>Stats - Atlasphere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<%- include('partials/navbar', { user: user }) %>
+<%
+  var n = function (v) { return v === null || v === undefined ? '–' : Number(v).toLocaleString('en-GB'); };
+  var d = function (v) { return v ? v.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'; };
+  var u = stats.users;
+%>
+<main class="admin-page">
+  <h1>Atlasphere stats</h1>
+  <p class="admin-sub">Only you can see this page. Updated <%= generatedAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) %> UTC · refresh for the latest.</p>
+
+  <section class="admin-hero">
+    <div class="admin-hero__main">
+      <span class="admin-hero__num"><%= n(u.verified) %></span>
+      <span class="admin-hero__label">registered users (verified)</span>
+    </div>
+    <p class="admin-hero__note"><%= n(u.total) %> sign-ups in total, of which <%= n(u.unverified) %> never entered their email code.</p>
+  </section>
+
+  <h2>People</h2>
+  <div class="admin-grid">
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(u.week) %></span><span class="admin-tile__label">new this week</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(u.month) %></span><span class="admin-tile__label">new in 30 days</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(u.withPhoto) %></span><span class="admin-tile__label">with a profile photo</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(u.withVisited) %></span><span class="admin-tile__label">added places visited</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.friends.accepted) %></span><span class="admin-tile__label">friendships</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.friends.pending) %></span><span class="admin-tile__label">pending friend requests</span></div>
+  </div>
+  <% if (u.undated) { %>
+    <p class="admin-note">Sign-up dates are only recorded from this update on: <%= n(u.undated) %> older <%= u.undated === 1 ? 'account counts' : 'accounts count' %> in the totals but not in “new this week” or “new in 30 days”.</p>
+  <% } %>
+
+  <h2>Trips</h2>
+  <div class="admin-grid">
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.trips.total) %></span><span class="admin-tile__label">trips</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.trips.shared) %></span><span class="admin-tile__label">with 2+ people</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= stats.trips.avgMembers === null ? '–' : stats.trips.avgMembers %></span><span class="admin-tile__label">people per trip (avg)</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.chat.total) %></span><span class="admin-tile__label">chat messages</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.chat.week) %></span><span class="admin-tile__label">messages this week</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.votes) %></span><span class="admin-tile__label">votes on activities</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.blocks) %></span><span class="admin-tile__label">itinerary items</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(stats.chat.activeTrips) %></span><span class="admin-tile__label">trips with a chat</span></div>
+  </div>
+
+  <div class="admin-cols">
+    <section>
+      <h2>Top destinations</h2>
+      <% if (!stats.destinations.length) { %><p class="admin-note">No trips yet.</p><% } %>
+      <ol class="admin-list">
+        <% stats.destinations.forEach(function (x) { %>
+          <li><span><%= x.flag %> <%= x.name %></span><b><%= x.n %></b></li>
+        <% }) %>
+      </ol>
+    </section>
+    <section>
+      <h2>Latest sign-ups</h2>
+      <ol class="admin-list">
+        <% stats.recent.forEach(function (r) { %>
+          <li><span><%= r.username %><% if (!r.verified) { %> <em class="admin-muted">(not verified)</em><% } %></span><b class="admin-muted"><%= r.createdAt ? d(r.createdAt) : '' %></b></li>
+        <% }) %>
+      </ol>
+    </section>
+  </div>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>
