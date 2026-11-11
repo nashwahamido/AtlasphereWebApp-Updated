@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Crowd map</title>
+  <link rel="stylesheet" href="/dist/leaflet.css">
+  <style>
+    html, body, #map { margin: 0; height: 100%; width: 100%; background: #e5e7eb; }
+    body.dark .tiles { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
+    body.dark, body.dark #map { background: #1a2736; }
+    .leaflet-tooltip { font: 12px/1.3 -apple-system, system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="map" role="img" aria-label="Map of estimated crowds and closed places"></div>
+  <script type="module" src="/dist/crowdMap.js"></script>
+</body>
+</html>

@@ -65,6 +65,12 @@ app.disable("x-powered-by");
 // Railway terminates HTTPS at its proxy: trust it for req.ip / req.secure.
 app.set("trust proxy", 1);
 app.use(security.securityHeaders);
+// The app shows /embed/* pages (the crowd map) inside its own screens.
+app.use("/embed", function (req, res, next) {
+  res.removeHeader("X-Frame-Options");
+  res.set("Content-Security-Policy", "frame-ancestors *");
+  next();
+});
 
 // ── VIEW ENGINE SETUP ────────────────────────────────────────────────────
 app.set("view engine", "ejs");
@@ -1000,9 +1006,13 @@ app.post("/groups/save-activities", requireAuth, requireMember(), (req, res) => 
 });
 
 // ── GROUPS / USERS ROUTES ────────────────────────────────────────────────
+// Shared destination info service (weather, holidays, places; cached).
+const destinationService = require("./services/destination")();
+app.set("destination", destinationService);
+app.use("/api/mobile", require("./routes/mobile-plan")({ connection }));
 app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVerificationEmail, sendEmail, generateCode }));
 app.use(require("./routes/friends")(connection));
-app.use(require("./routes/destination")(connection));
+app.use(require("./routes/destination")(connection, { destination: destinationService }));
 app.use(require("./routes/admin")(connection));
 // Help, Privacy and Terms pages (also linked from the mobile app).
 app.locals.supportEmail = process.env.SUPPORT_EMAIL || "atlasphere.app@gmail.com";
@@ -1553,9 +1563,25 @@ var roomMembers = {}; // { "group-123": { "userId1": true, ... } }
 // checked against the trip's members, and who sent a message always comes
 // from the session, never from the browser.
 io.engine.use(sessionMiddleware);
+app.set("io", io); // so API routes can push live updates to a trip's room
+
+// Who is on this socket: the website's login session, or the app's token.
+const mobileAuth = require("./config/mobileAuth")(connection);
+io.use(function(socket, next) {
+  var sessionUser = socket.request.session && socket.request.session.user;
+  if (sessionUser) { socket.data.user = sessionUser; return next(); }
+  var token = socket.handshake.auth && socket.handshake.auth.token;
+  if (!token) return next();
+  mobileAuth.userForToken(token)
+    .then(function(u) {
+      if (u) socket.data.user = { id: u.IDuser, username: u.username, email: u.email, profilePictureUrl: u.profilePictureUrl || '' };
+      next();
+    })
+    .catch(function() { next(); });
+});
 
 io.on("connection", function(socket) {
-  var me = socket.request.session && socket.request.session.user;
+  var me = socket.data.user;
   if (!me) { socket.disconnect(true); return; }
   var allowed = {}; // groupId -> true once membership is confirmed
 
