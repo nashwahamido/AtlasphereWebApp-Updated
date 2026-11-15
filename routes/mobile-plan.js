@@ -11,6 +11,9 @@ const createMobileAuth = require("../config/mobileAuth");
 const createTrips = require("../services/trips");
 const { TripError } = require("../services/trips");
 const createFriends = require("../services/friends");
+const { siteBase } = require("../config/security");
+const { sendEmail } = require("../config/mailer");
+const { inviteEmail } = require("./groups");
 const { tripFromItinerary } = require("../services/destination").helpers;
 
 const HOURS = ["08.00", "09.00", "10.00", "11.00", "12.00", "13.00", "14.00", "15.00", "16.00", "17.00", "18.00", "19.00", "20.00", "21.00", "22.00", "23.00", "00.00", "01.00", "02.00"];
@@ -280,6 +283,21 @@ module.exports = function createMobilePlanRouter(deps) {
   router.get("/trips/:id/destination/places", requireMobileAuth, route(async (req) => {
     const { g, cities, city, dates } = await destinationArgs(req);
     return Object.assign({ cities, city }, await req.app.get("destination").placesInfo(g, dates));
+  }));
+
+  // ── INVITE BY EMAIL (same email as the website's) ─────────────────────
+  router.post("/trips/:id/invite-email", requireMobileAuth, route(async (req) => {
+    const g = await trip(req);
+    const email = String((req.body && req.body.email) || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new BadRequest("Enter a valid email address.");
+    const limits = req.app.get("limits");
+    if (limits && limits.inviteEmail && limits.inviteEmail.take(String(me(req)))) {
+      throw new BadRequest("You've sent a lot of invites. Please try again later, or share the link instead.", 429);
+    }
+    const link = siteBase(req) + "/groups/join/" + g.inviteCode;
+    const sent = await sendEmail(inviteEmail(req.mobileUser.username, g.name, link, email));
+    if (!sent) throw new BadRequest("We couldn't send that email. Share the link with them instead.", 502);
+    return { ok: true, message: "Invite sent to " + email + "." };
   }));
 
   // ── NOTIFICATIONS ─────────────────────────────────────────────────────
