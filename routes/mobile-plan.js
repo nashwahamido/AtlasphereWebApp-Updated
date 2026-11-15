@@ -348,7 +348,7 @@ module.exports = function createMobilePlanRouter(deps) {
   }));
 
   router.post("/me/photo", requireMobileAuth, route(async (req) => {
-    const file = req.files && (req.files.photo || req.files.profilePicture);
+    const file = (req.files && (req.files.photo || req.files.profilePicture)) || req.app.get("images").fromBase64(req.body && req.body.photoBase64);
     if (!file) throw new BadRequest("Please choose a photo.");
     let photo;
     try { photo = await req.app.get("images").saveUpload(file, { width: 400, height: 400, prefix: "user" + me(req) + "_" }); }

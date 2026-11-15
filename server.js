@@ -90,7 +90,13 @@ app.use(function (req, res, next) {
   next();
 });
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// JSON bodies are small, except the app's photo uploads (base64, a few MB).
+const jsonSmall = express.json();
+const jsonPhoto = express.json({ limit: "12mb" });
+app.use(function (req, res, next) {
+  var photo = req.method === "POST" && /^\/api\/mobile\/(me|trips\/[^/]+)\/photo$/.test(req.path);
+  return (photo ? jsonPhoto : jsonSmall)(req, res, next);
+});
 app.use(express.static("assets"));
 app.use(fileUpload({ limits: { fileSize: 10 * 1024 * 1024 }, abortOnLimit: true, responseOnLimit: "That photo is too big (10 MB max)." }));
 

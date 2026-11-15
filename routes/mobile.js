@@ -364,10 +364,11 @@ module.exports = function createMobileRouter(deps) {
     await trips.setInterests(me(req), req.params.id, req.body && req.body.interests);
     return { trip: await trips.detail(me(req), req.params.id, siteBase(req)) };
   }));
-  // Multipart upload, field "photo". Stored in the database like the website's.
+  // JSON { photoBase64 } (what the app sends) or a multipart upload, field
+  // "photo". Stored in the database like the website's.
   router.post("/trips/:id/photo", requireMobileAuth, tripRoute(async (req) => {
     await trips.assertMember(me(req), req.params.id);
-    const file = req.files && (req.files.photo || req.files.groupPhoto);
+    const file = (req.files && (req.files.photo || req.files.groupPhoto)) || req.app.get("images").fromBase64(req.body && req.body.photoBase64);
     if (!file) throw new TripError(400, "Please choose a photo.");
     let photoPath;
     try {
