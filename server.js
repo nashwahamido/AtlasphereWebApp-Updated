@@ -136,6 +136,8 @@ app.get("/uploads/:name", images.serve);
 const membership = security.createMembership(connection);
 app.set("membership", membership);
 const invites = require("./services/invites")(connection);
+const push = require("./services/push");
+push.init(connection);
 app.set("invites", invites);
 
 // After signing in (or verifying), go to the trip someone invited them to,
@@ -720,6 +722,32 @@ app.post("/auth/reset-password", (req, res) => {
 });
 
 // ── PROFILE SETUP ────────────────────────────────────────────────────────
+// Push a chat message to trip members who don't have the trip open (at most
+// one push per trip per person every 2 minutes, so a busy chat isn't noisy).
+function pushChatMessage(groupId, sender, text) {
+  var room = "group-" + groupId;
+  Promise.all([
+    connection.promise().query(
+      "SELECT m.userId, g.name FROM tbl_group_members m JOIN tbl_groups g ON g.id = m.groupId WHERE m.groupId = ? AND m.userId <> ?",
+      [groupId, sender.id]
+    ),
+    io.in(room).fetchSockets().catch(function() { return []; }),
+  ]).then(function(r) {
+    var rows = r[0][0];
+    if (!rows.length) return;
+    var here = {};
+    r[1].forEach(function(s) { if (s.data && s.data.user) here[String(s.data.user.id)] = true; });
+    var ids = rows.map(function(x) { return x.userId; }).filter(function(id) { return !here[String(id)]; });
+    return push.sendToUsers(ids, {
+      title: rows[0].name || "Trip chat",
+      body: sender.username + ": " + text,
+      data: { type: "chat", groupId: String(groupId) },
+      throttleKey: "chat:" + groupId,
+      throttleMs: 2 * 60 * 1000,
+    });
+  }).catch(function(err) { console.error("Chat push error:", err.message); });
+}
+
 // ── WELCOME (first stop after sign-up for people without a trip) ─────────
 function renderWelcome(req, res, error, value) {
   connection.query("SELECT COUNT(*) AS cnt FROM tbl_group_members WHERE userId = ?", [req.session.user.id], function (err, rows) {
@@ -1698,6 +1726,7 @@ io.on("connection", function(socket) {
     );
 
     io.to(room).emit("new-message", msg);
+    pushChatMessage(gid, me, text);
   });
 
   // ── Itinerary real-time sync ─────────────────────────────────────────────
@@ -1841,6 +1870,10 @@ server.listen(PORT, '0.0.0.0', function() {
       else { console.log("Ensured tbl_itinerary_comments table exists"); }
     }
   );
+
+  push.ensureTable()
+    .then(function() { push.startNotificationPoller(8000); console.log("Push notifications ready"); })
+    .catch(function(err) { console.error("Migration note (push_tokens):", err.message); });
 });
 
 module.exports = app;

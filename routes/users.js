@@ -50,6 +50,7 @@ router.post('/delete', (req, res) => {
     'DELETE FROM tbl_friendships WHERE requesterId = ? OR addresseeId = ?',
     [userId, userId],
     function() {
+  require('../services/push').removeUser(userId).catch(function() {});
   connection.query(
     'DELETE FROM tbl_users WHERE IDuser = ?',
     [userId],
