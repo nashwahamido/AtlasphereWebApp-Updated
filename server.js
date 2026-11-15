@@ -404,6 +404,7 @@ app.post("/auth/register", limits.register, validationRegisterRules, async (req,
           }
 
           const newUserId = result.insertId;
+          connection.query("INSERT IGNORE INTO tbl_user_signups (userId) VALUES (?)", [newUserId], function() {});
 
           req.session.pendingVerification = {
             userId: newUserId,
@@ -1771,17 +1772,14 @@ server.listen(PORT, '0.0.0.0', function() {
     }
   );
 
-  // Record when each account signs up (for the stats page). Accounts that
-  // existed before this column was added keep NULL: their date is unknown.
+  // When each account signed up (for the stats page). Kept in its own small
+  // table: the live database won't let tbl_users be altered (MySQL 8.4
+  // foreign-key rules). Accounts from before this have no date.
   connection.query(
-    "ALTER TABLE tbl_users ADD COLUMN createdAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP",
+    "CREATE TABLE IF NOT EXISTS tbl_user_signups (userId INT NOT NULL PRIMARY KEY, createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
     function(err) {
-      if (err && err.code === 'ER_DUP_FIELDNAME') return; // already there
-      if (err) { console.error("Migration note (users.createdAt):", err.message); return; }
-      connection.query("UPDATE tbl_users SET createdAt = NULL", function(uErr) {
-        if (uErr) console.error("Migration note (users.createdAt reset):", uErr.message);
-        else console.log("Added createdAt column to tbl_users");
-      });
+      if (err) console.error("Migration note (user_signups):", err.message);
+      else console.log("Ensured tbl_user_signups table exists");
     }
   );
 
