@@ -179,6 +179,7 @@ module.exports = function createMobileRouter(deps) {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [username, email, phone || "", hash, genderId, 0, "00:00:00", 0, null]
         );
+        await db.query("INSERT IGNORE INTO tbl_user_signups (userId) VALUES (?)", [result.insertId]).catch(() => {});
         const pending = await issueAndSendCode(result.insertId, email);
         res.status(201).json({ pendingToken: pending, email });
       } catch (err) {

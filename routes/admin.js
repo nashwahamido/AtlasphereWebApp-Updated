@@ -54,9 +54,9 @@ module.exports = function createAdminRouter(connection) {
                   COALESCE(SUM(isConfirmed = 1 AND profilePictureUrl IS NOT NULL AND profilePictureUrl <> ''), 0) AS withPhoto,
                   COALESCE(SUM(isConfirmed = 1 AND visitedCountries IS NOT NULL AND visitedCountries <> ''), 0) AS withVisited
              FROM tbl_users`),
-      one(`SELECT COALESCE(SUM(createdAt >= NOW() - INTERVAL 7 DAY), 0) AS week, COALESCE(SUM(createdAt >= NOW() - INTERVAL 30 DAY), 0) AS month
-             FROM tbl_users WHERE isConfirmed = 1`),
-      one(`SELECT username, isConfirmed, createdAt FROM tbl_users ORDER BY IDuser DESC LIMIT 10`),
+      one(`SELECT COALESCE(SUM(s.createdAt >= NOW() - INTERVAL 7 DAY), 0) AS week, COALESCE(SUM(s.createdAt >= NOW() - INTERVAL 30 DAY), 0) AS month
+             FROM tbl_users u JOIN tbl_user_signups s ON s.userId = u.IDuser WHERE u.isConfirmed = 1`),
+      one(`SELECT u.username, u.isConfirmed, s.createdAt FROM tbl_users u LEFT JOIN tbl_user_signups s ON s.userId = u.IDuser ORDER BY u.IDuser DESC LIMIT 10`),
       one(`SELECT COUNT(*) AS total FROM tbl_groups`),
       one(`SELECT COUNT(*) AS trips, COALESCE(SUM(n > 1), 0) AS shared, AVG(n) AS avgMembers
              FROM (SELECT g.id, COUNT(m.userId) AS n FROM tbl_groups g LEFT JOIN tbl_group_members m ON m.groupId = g.id GROUP BY g.id) t`),
@@ -65,7 +65,7 @@ module.exports = function createAdminRouter(connection) {
       one(`SELECT COUNT(*) AS total, COALESCE(SUM(createdAt >= NOW() - INTERVAL 7 DAY), 0) AS week, COUNT(DISTINCT groupId) AS activeTrips FROM tbl_chat_messages`),
       one(`SELECT COUNT(*) AS total FROM tbl_activity_votes`),
       one(`SELECT COUNT(*) AS total FROM tbl_itinerary_blocks`),
-      one(`SELECT COALESCE(SUM(createdAt IS NULL), 0) AS undated FROM tbl_users WHERE isConfirmed = 1`),
+      one(`SELECT COUNT(*) AS undated FROM tbl_users u LEFT JOIN tbl_user_signups s ON s.userId = u.IDuser WHERE u.isConfirmed = 1 AND s.userId IS NULL`),
     ]);
 
     res.render("admin-stats", {
