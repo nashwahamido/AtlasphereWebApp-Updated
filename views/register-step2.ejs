@@ -17,22 +17,23 @@
       <div class="auth-card">
         <h1>We've sent you an email</h1>
         <p class="subtitle">Enter the 6-digit code to verify your account</p>
-        <p class="subtitle" style="font-size:13px; opacity:0.7; margin-top:4px;">Can't find it? Check your <strong>spam/junk folder</strong>. The code is valid for 30 minutes.</p>
+        <p class="subtitle" style="font-size:13px; opacity:0.75; margin-top:4px;">It comes from <strong>Atlasphere</strong> with the subject "<em>…is your Atlasphere verification code</em>". Can't find it? Check your <strong>spam/junk</strong> folder (and the <strong>Promotions</strong> tab in Gmail). It can take a minute or two to arrive, and the code is valid for 30 minutes.</p>
         <% if (typeof email !== 'undefined' && email) { %><span class="verify-email"><%= email %></span><% } %>
         <% if (typeof error !== 'undefined' && error) { %><div class="msg-error"><%= error %></div><% } %>
         <% if (typeof success !== 'undefined' && success) { %><div class="msg-success"><%= success %></div><% } %>
         <form action="/auth/verify" method="post">
           <div class="code-inputs">
-            <input type="text" maxlength="1" name="code1" autocomplete="off" id="code1" autofocus required>
-            <input type="text" maxlength="1" name="code2" autocomplete="off" id="code2" required>
-            <input type="text" maxlength="1" name="code3" autocomplete="off" id="code3" required>
-            <input type="text" maxlength="1" name="code4" autocomplete="off" id="code4" required>
-            <input type="text" maxlength="1" name="code5" autocomplete="off" id="code5" required>
-            <input type="text" maxlength="1" name="code6" autocomplete="off" id="code6" required>
+            <input type="text" maxlength="1" name="code1" inputmode="numeric" autocomplete="one-time-code" id="code1" autofocus required>
+            <input type="text" maxlength="1" name="code2" inputmode="numeric" autocomplete="off" id="code2" required>
+            <input type="text" maxlength="1" name="code3" inputmode="numeric" autocomplete="off" id="code3" required>
+            <input type="text" maxlength="1" name="code4" inputmode="numeric" autocomplete="off" id="code4" required>
+            <input type="text" maxlength="1" name="code5" inputmode="numeric" autocomplete="off" id="code5" required>
+            <input type="text" maxlength="1" name="code6" inputmode="numeric" autocomplete="off" id="code6" required>
           </div>
           <button type="submit" class="auth-submit">Verify</button>
         </form>
-        <a href="/auth/resend-code" class="resend-link">Expired code? Send code again?</a>
+        <a href="/auth/resend-code" class="resend-link">Didn't get it? Send a new code</a>
+        <p class="subtitle" style="font-size:13px; opacity:0.75; margin-top:10px;">Wrong email address? <a href="/auth/register" class="resend-link" style="display:inline;">Sign up again</a> with the right one.</p>
       </div>
     </div>
   </div>

@@ -183,9 +183,21 @@ function generateCode() {
 }
 
 async function sendVerificationEmail(toEmail, code) {
+  // The code goes in the subject so people can read it straight from the
+  // notification, and a plain-text part goes with the HTML; both help
+  // with spam filters and with people who never open the email.
   return sendEmail({
     to: toEmail,
-    subject: "Atlasphere — Verify your email",
+    subject: code + " is your Atlasphere verification code",
+    text: [
+      "Welcome to Atlasphere!",
+      "",
+      "Your verification code is: " + code,
+      "",
+      "Enter it on the sign-up screen to finish creating your account. It expires in 30 minutes.",
+      "",
+      "If you didn't sign up for Atlasphere, you can ignore this email.",
+    ].join("\n"),
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
         <h1 style="color: #0B3856; font-size: 24px;">Welcome to Atlasphere!</h1>
@@ -193,7 +205,8 @@ async function sendVerificationEmail(toEmail, code) {
         <div style="background: #f0f4f8; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
           <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #0B3856;">${code}</span>
         </div>
-        <p style="color: #888; font-size: 14px;">This code expires in 30 minutes.</p>
+        <p style="color: #555; font-size: 15px; line-height: 1.6;">Enter it on the sign-up screen to finish creating your account. It expires in 30 minutes.</p>
+        <p style="color: #888; font-size: 13px; line-height: 1.6;">If you didn't sign up for Atlasphere, you can ignore this email.</p>
       </div>
     `,
   });
