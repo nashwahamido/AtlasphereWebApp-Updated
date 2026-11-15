@@ -1092,9 +1092,23 @@ app.use("/api/mobile", require("./routes/mobile")({ connection, bcrypt, sendVeri
 app.use(require("./routes/friends")(connection));
 app.use(require("./routes/destination")(connection, { destination: destinationService }));
 app.use(require("./routes/admin")(connection));
-// Help, Privacy and Terms pages (also linked from the mobile app).
+// Android App Links: lets invite links (/groups/join/...) open the Android app.
+// ANDROID_CERT_SHA256 = the app's signing certificate fingerprint(s), comma
+// separated (from `eas credentials` and Play Console > App signing).
+app.get("/.well-known/assetlinks.json", function (req, res) {
+  var prints = String(process.env.ANDROID_CERT_SHA256 || "").split(",").map(function (s) { return s.trim().toUpperCase(); })
+    .filter(function (s) { return /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(s); });
+  res.set("Cache-Control", "public, max-age=3600");
+  res.json(prints.length ? [{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: process.env.ANDROID_PACKAGE || "app.atlasphere.mobile", sha256_cert_fingerprints: prints },
+  }] : []);
+});
+
+// Help, Privacy, Terms and account-deletion pages (also linked from the app
+// and the Google Play listing).
 app.locals.supportEmail = process.env.SUPPORT_EMAIL || "atlasphere.app@gmail.com";
-var INFO_PAGES = { help: "Help", privacy: "Privacy Policy", terms: "Terms of Service" };
+var INFO_PAGES = { help: "Help", privacy: "Privacy Policy", terms: "Terms of Service", "delete-account": "Delete your account" };
 Object.keys(INFO_PAGES).forEach(function (page) {
   app.get("/" + page, function (req, res) {
     res.render("info", { page: page, title: INFO_PAGES[page], updated: "7 November 2026", user: req.session.user || null });
