@@ -149,9 +149,7 @@ try {
 }
 const sessionMiddleware = session(sessionConfig);
 app.use(sessionMiddleware);
-if (!process.env.SESSION_SECRET) {
-  console.warn("WARNING: SESSION_SECRET is not set; using the built-in default. Set it in the environment.");
-}
+console.log("Stats page: " + (require("./routes/admin").adminEmails().length + " admin address(es) in ADMIN_EMAILS"));
 
 // ── RATE LIMITS ──────────────────────────────────────────────────────────
 var emailKey = function (field) {

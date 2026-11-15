@@ -3,15 +3,23 @@
 // variable (comma-separated) can open it; everyone else gets "Not found".
 const express = require("express");
 
+// Accepts commas, semicolons or spaces between addresses, and ignores stray
+// quotes (easy to add by accident in a hosting dashboard).
 function adminEmails() {
   return String(process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+    .split(/[,;\s]+/)
+    .map((e) => e.trim().replace(/^["'<]+|["'>]+$/g, "").toLowerCase())
+    .filter((e) => e.includes("@"));
 }
 
 function isAdmin(user) {
-  return !!(user && user.email && adminEmails().includes(String(user.email).toLowerCase()));
+  return !!(user && user.email && adminEmails().includes(String(user.email).trim().toLowerCase()));
+}
+
+// "nashwa@example.com" → "n***@example.com" (for the server log).
+function mask(email) {
+  const [name, domain] = String(email || "").split("@");
+  return name ? name.charAt(0) + "***@" + (domain || "?") : "(no email)";
 }
 
 module.exports = function createAdminRouter(connection) {
@@ -33,6 +41,11 @@ module.exports = function createAdminRouter(connection) {
   router.get("/admin/stats", async (req, res) => {
     const user = req.session && req.session.user;
     if (!isAdmin(user)) {
+      // Still a plain "Not found" for visitors, but the server log says why.
+      const why = !user ? "not signed in"
+        : !adminEmails().length ? "ADMIN_EMAILS is not set (or has no valid address)"
+        : "signed in as " + mask(user.email) + ", which isn't in ADMIN_EMAILS (" + adminEmails().map(mask).join(", ") + ")";
+      console.warn("Stats page refused: " + why);
       return res.status(404).render("error", { status: 404, message: "Page not found", user: user || null });
     }
 
@@ -84,3 +97,4 @@ module.exports = function createAdminRouter(connection) {
 };
 
 module.exports.isAdmin = isAdmin;
+module.exports.adminEmails = adminEmails;
