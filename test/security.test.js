@@ -82,3 +82,17 @@ test("live site never uses the built-in session secret", () => {
   assert.ok(a.length >= 64 && a !== b, "random per start");
   assert.equal(run({ RAILWAY_ENVIRONMENT: "production", SESSION_SECRET: "x".repeat(40) }), "x".repeat(40));
 });
+
+test("stats leave out admins and STATS_EXCLUDE_EMAILS", () => {
+  const saved = [process.env.ADMIN_EMAILS, process.env.STATS_EXCLUDE_EMAILS];
+  try {
+    process.env.ADMIN_EMAILS = "me@team.com";
+    process.env.STATS_EXCLUDE_EMAILS = "Tester1@team.com; me@team.com, tester2@team.com";
+    const { teamEmails } = require("../routes/admin");
+    assert.deepEqual(teamEmails().sort(), ["me@team.com", "tester1@team.com", "tester2@team.com"]);
+  } finally {
+    [process.env.ADMIN_EMAILS, process.env.STATS_EXCLUDE_EMAILS] = saved;
+    if (saved[0] === undefined) delete process.env.ADMIN_EMAILS;
+    if (saved[1] === undefined) delete process.env.STATS_EXCLUDE_EMAILS;
+  }
+});

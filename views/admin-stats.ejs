@@ -27,6 +27,14 @@
     </div>
     <p class="admin-hero__note"><%= n(u.total) %> sign-ups in total, of which <%= n(u.unverified) %> never entered their email code.</p>
   </section>
+  <% if (everyone) { %>
+    <p class="admin-team">Real users only: <%= team.found %> team <%= team.found === 1 ? 'account is' : 'accounts are' %> left out, with the trips they created.
+      Including the team: <%= n(everyone.users.verified) %> verified users, <%= n(everyone.trips.total) %> trips, <%= n(everyone.chat.total) %> chat messages, <%= n(everyone.votes) %> votes.</p>
+  <% } else if (team.configured) { %>
+    <p class="admin-team">None of the addresses in ADMIN_EMAILS / STATS_EXCLUDE_EMAILS match an account, so nothing is left out.</p>
+  <% } else { %>
+    <p class="admin-team">Includes everyone. To leave out your team’s test accounts, add their emails to STATS_EXCLUDE_EMAILS in Railway.</p>
+  <% } %>
 
   <h2>People</h2>
   <div class="admin-grid">

@@ -1481,6 +1481,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .admin-hero__num { font-size: 3.2rem; font-weight: 800; line-height: 1; }
 .admin-hero__label { font-size: 1.1rem; font-weight: 600; }
 .admin-hero__note { margin: 10px 0 0; opacity: 0.85; font-size: 14px; }
+.admin-team { margin: 12px 0 0; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--border); color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .admin-tile { border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
 .admin-tile__num { font-size: 1.6rem; font-weight: 800; }
