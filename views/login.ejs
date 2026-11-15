@@ -21,6 +21,7 @@
         <% } %>
         <% if (typeof error !== 'undefined' && error) { %><div class="msg-error"><%= error %></div><% } %>
         <% if (typeof success !== 'undefined' && success) { %><div class="msg-success"><%= success %></div><% } %>
+        <%- include('partials/google-button') %>
         <form action="/auth/login" method="post">
           <div class="auth-fg"><label for="loginemail">Email</label><input type="email" id="loginemail" name="loginemail" placeholder="Enter your email" required></div>
           <div class="auth-fg"><label for="loginpsw">Password</label><input type="password" id="loginpsw" name="loginpsw" placeholder="Enter your password" required></div>
