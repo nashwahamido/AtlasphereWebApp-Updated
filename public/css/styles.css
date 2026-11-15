@@ -1280,6 +1280,58 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .gc-skip-btn:hover { color: #fff; }
 
 .gc-invite-msg { margin-bottom: 16px; }
+.gc-kicker { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #E8933A; }
+.gc-left h1 + .gc-lead { margin-top: -14px; }
+.gc-lead { color: rgba(255,255,255,0.85); font-size: 15px; line-height: 1.55; margin: 0 0 20px; }
+.gc-link { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.12); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2); border-radius: 30px; padding: 5px 5px 5px 16px; margin-bottom: 10px; max-width: 460px; }
+.gc-link input { flex: 1; min-width: 0; background: none; border: none; color: #fff; font-size: 13px; font-family: inherit; outline: none; text-overflow: ellipsis; }
+.gc-link__copy { flex-shrink: 0; padding: 9px 20px; border-radius: 30px; border: none; background: #E8933A; color: #fff; font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer; }
+.gc-link__copy:hover { background: #D4822F; }
+.gc-share { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.gc-share-btn--wa { background: #25D366; border-color: #25D366; }
+.gc-share-btn--wa:hover { background: #1fb457; }
+.gc-search { max-width: 460px; padding: 5px 5px 5px 16px; }
+.gc-search__send { flex-shrink: 0; padding: 7px 16px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.15); color: #fff; font-weight: 600; font-size: 13px; font-family: inherit; cursor: pointer; }
+.gc-search__send:hover { background: rgba(255,255,255,0.28); }
+.gc-members { margin-top: 18px; }
+.gc-members__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.gc-member { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px; border-radius: 30px; background: rgba(255,255,255,0.14); color: #fff; font-size: 14px; }
+.gc-member em { font-style: normal; opacity: 0.7; }
+.gc-member__dot { width: 26px; height: 26px; border-radius: 50%; background: #0B3856; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+.gc-member--new { background: rgba(37,211,102,0.3); }
+.gc-members__hint { margin: 8px 0 0; color: rgba(255,255,255,0.7); font-size: 13px; }
+.gc-next { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 24px; }
+.gc-next .gc-go-btn { margin-top: 0; }
+.invite-banner { margin: 0 0 18px; padding: 12px 14px; border-radius: 12px; background: rgba(232,147,58,0.18); border: 1px solid rgba(232,147,58,0.5); color: #fff; font-size: 14px; line-height: 1.5; text-align: left; }
+.invite-banner a { color: #E8933A; font-weight: 600; }
+
+/* ===== WELCOME ===== */
+.welcome { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; padding: 56px 32px; color: #fff; }
+.welcome h1 { font-size: 2.3rem; font-weight: 800; line-height: 1.2; margin: 0 0 12px; }
+.welcome__lead { font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.88); max-width: 620px; margin: 0 0 28px; }
+.welcome__cards { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 18px; }
+.welcome-card { background: rgba(255,255,255,0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.18); border-radius: 20px; padding: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.welcome-card__icon { font-size: 28px; line-height: 1; }
+.welcome-card h2 { font-size: 1.25rem; font-weight: 700; margin: 4px 0 0; }
+.welcome-card p { margin: 0 0 8px; font-size: 14px; line-height: 1.55; color: rgba(255,255,255,0.82); }
+.welcome-card__btn { margin-top: auto; display: inline-block; padding: 12px 28px; border-radius: 30px; border: none; background: #E8933A; color: #fff; font-weight: 700; font-size: 15px; font-family: inherit; text-decoration: none; cursor: pointer; }
+.welcome-card__btn:hover { background: #D4822F; }
+.welcome-card__btn--ghost { margin-top: 0; padding: 10px 20px; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3); }
+.welcome-card__btn--ghost:hover { background: rgba(255,255,255,0.3); }
+.welcome-card__form { margin-top: auto; display: flex; gap: 8px; width: 100%; }
+.welcome-card__form input { flex: 1; min-width: 0; padding: 11px 16px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; font-family: inherit; outline: none; }
+.welcome-card__form input::placeholder { color: rgba(255,255,255,0.5); }
+.welcome-card__form input:focus { border-color: #E8933A; }
+.welcome-card__error { margin-top: 6px; width: 100%; }
+.welcome__more { margin: 24px 0 0; font-size: 14px; color: rgba(255,255,255,0.75); }
+.welcome__more a { color: #E8933A; font-weight: 600; }
+@media (max-width: 768px) {
+  .welcome { padding: 32px 18px; }
+  .welcome h1 { font-size: 1.7rem; }
+  .welcome__cards { grid-template-columns: minmax(0,1fr); }
+  .gc-link, .gc-search { margin-left: auto; margin-right: auto; }
+  .gc-share, .gc-members__list, .gc-next { justify-content: center; }
+}
 
 @media (max-width: 768px) {
   .gc-content { flex-direction: column; padding: 40px 24px; text-align: center; }
@@ -1490,6 +1542,12 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .admin-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .admin-list li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); font-size: 14px; }
 .admin-list li span { min-width: 0; overflow-wrap: anywhere; }
+.admin-funnel { list-style: none; margin: 12px 0 16px; padding: 0; display: grid; gap: 12px; }
+.admin-funnel__head { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin-bottom: 5px; }
+.admin-funnel__track { height: 12px; border-radius: 6px; background: var(--border); overflow: hidden; }
+.admin-funnel__bar { height: 100%; border-radius: 6px; background: #E8933A; }
+.admin-funnel__kept { display: block; margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.admin-funnel__kept--low { color: #c0392b; font-weight: 600; }
 @media (max-width: 768px) {
   .admin-page { padding: 24px 16px 8px; }
   .admin-cols { grid-template-columns: minmax(0,1fr); gap: 0; }

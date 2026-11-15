@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('partials/head-meta') %>
+  <title>Welcome - Atlasphere</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<%- include('partials/navbar', { user: user }) %>
+<div class="framed-page">
+  <div class="framed-box">
+    <div class="framed-box__bg"><img src="/images/profile-created-coast.jpg" alt=""></div>
+    <div class="framed-box__content">
+      <div class="welcome">
+        <h1>Welcome to Atlasphere, <%= user.username %>!</h1>
+        <p class="welcome__lead">Atlasphere is for planning trips with your friends: pick a place, vote on what to do and build the plan together.</p>
+
+        <div class="welcome__cards">
+          <section class="welcome-card">
+            <span class="welcome-card__icon" aria-hidden="true">🧭</span>
+            <h2>Start a trip</h2>
+            <p>Choose where you&rsquo;re going. You&rsquo;ll get a link to send to your group.</p>
+            <a href="/groups/create/country" class="welcome-card__btn">Plan a trip</a>
+          </section>
+
+          <section class="welcome-card">
+            <span class="welcome-card__icon" aria-hidden="true">🔗</span>
+            <h2>Join a friend&rsquo;s trip</h2>
+            <p>Got an invite link? Paste it here.</p>
+            <form action="/welcome/join" method="post" class="welcome-card__form">
+              <input type="text" name="invite" value="<%= value %>" placeholder="https://…/groups/join/…" aria-label="Invite link" autocomplete="off" required>
+              <button type="submit" class="welcome-card__btn welcome-card__btn--ghost">Join</button>
+            </form>
+            <% if (error) { %><div class="msg-error welcome-card__error" role="alert"><%= error %></div><% } %>
+          </section>
+        </div>
+
+        <p class="welcome__more">
+          <% if (hasTrips) { %><a href="/groups">Go to my trips</a> · <% } %>
+          <a href="/setup">Set up your profile</a> (photo and places you&rsquo;ve been)
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+<script>try{var s=localStorage.getItem('atlasphere-theme');if(s)document.documentElement.setAttribute('data-theme',s);}catch(e){}</script>
+</body>
+</html>

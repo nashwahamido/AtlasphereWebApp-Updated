@@ -9,13 +9,16 @@
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-<nav class="auth-nav"><a href="/" class="auth-nav__brand"><img src="/icons/Atlasphere Logo.svg" alt="Atlasphere" class="navbar-logo"></a><a href="/auth/register" class="auth-nav__btn">Log in</a></nav>
+<nav class="auth-nav"><a href="/" class="auth-nav__brand"><img src="/icons/Atlasphere Logo.svg" alt="Atlasphere" class="navbar-logo"></a><a href="/auth/register" class="auth-nav__btn">Sign up</a></nav>
 <div class="framed-page">
   <div class="framed-box">
     <div class="framed-box__bg"><img src="/images/login-mountain.jpg" alt="Mountain"></div>
     <div class="framed-box__content" style="display:flex;align-items:center;justify-content:center;">
       <div class="auth-card">
         <h1>Sign In</h1>
+        <% if (typeof pendingInviteTrip !== 'undefined' && pendingInviteTrip) { %>
+          <div class="invite-banner" role="status">Log in to join <strong><%= pendingInviteTrip.flag || '' %> <%= pendingInviteTrip.name %></strong>. You&rsquo;ll go straight into the trip.</div>
+        <% } %>
         <% if (typeof error !== 'undefined' && error) { %><div class="msg-error"><%= error %></div><% } %>
         <% if (typeof success !== 'undefined' && success) { %><div class="msg-success"><%= success %></div><% } %>
         <form action="/auth/login" method="post">

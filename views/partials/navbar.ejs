@@ -114,7 +114,7 @@
         data.slice(0, 20).forEach(function(n) {
           var item = document.createElement('div');
           item.className = 'notif-item' + (n.isRead ? '' : ' notif-item--unread');
-          var icon = n.type === 'vote-summary' ? '📊' : n.type === 'invite' ? '✉️'
+          var icon = n.type === 'vote-summary' ? '📊' : n.type === 'invite' ? '✉️' : n.type === 'join' ? '🙌'
             : n.type === 'friend-request' ? '👋' : n.type === 'friend-accepted' ? '🤝' : '👍';
           // Built with textContent, never innerHTML: messages contain other
           // people's names, which must never be treated as HTML.

@@ -135,6 +135,35 @@ app.set("images", images);
 app.get("/uploads/:name", images.serve);
 const membership = security.createMembership(connection);
 app.set("membership", membership);
+const invites = require("./services/invites")(connection);
+app.set("invites", invites);
+
+// After signing in (or verifying), go to the trip someone invited them to,
+// if any; otherwise to their trips, or the welcome page if they have none.
+async function landingAfterSignIn(req, user) {
+  const code = req.session.pendingInvite;
+  delete req.session.pendingInvite;
+  delete req.session.pendingInviteTrip;
+  if (code) {
+    try {
+      const trip = await invites.findTrip(code);
+      if (trip) {
+        await invites.joinTrip(trip, user);
+        console.log(user.username + " joined a trip via invite: " + trip.name);
+        return "/groups/" + trip.id;
+      }
+    } catch (e) {
+      console.error("Invite join error:", e.message);
+    }
+  }
+  try {
+    const [rows] = await connection.promise().query("SELECT COUNT(*) AS cnt FROM tbl_group_members WHERE userId = ?", [user.id]);
+    if (rows[0] && Number(rows[0].cnt) > 0) return "/groups";
+  } catch (e) {
+    console.error("Trip count error:", e.message);
+  }
+  return "/welcome";
+}
 const requireMember = membership.requireMember;
 
 // ── SESSION CONFIGURATION (stored in MySQL so sessions survive restarts) ──
@@ -149,6 +178,11 @@ try {
 }
 const sessionMiddleware = session(sessionConfig);
 app.use(sessionMiddleware);
+// The trip someone was invited to, so sign-up and login can say so.
+app.use(function (req, res, next) {
+  res.locals.pendingInviteTrip = (req.session && req.session.pendingInviteTrip) || null;
+  next();
+});
 console.log("Stats page: " + (require("./routes/admin").adminEmails().length + " admin address(es) in ADMIN_EMAILS"));
 
 // ── RATE LIMITS ──────────────────────────────────────────────────────────
@@ -304,7 +338,9 @@ app.post("/auth/login", limits.loginIp, limits.loginAccount, validationLoginRule
         const code = generateCode();
         connection.query("UPDATE tbl_users SET verificationCode = ? WHERE IDuser = ?", [Number(code), user.IDuser], async () => {
           await sendVerificationEmail(user.email, code);
+          var keepInvite = { code: req.session.pendingInvite, trip: req.session.pendingInviteTrip };
           req.session.regenerate(() => {
+            if (keepInvite.code) { req.session.pendingInvite = keepInvite.code; req.session.pendingInviteTrip = keepInvite.trip; }
             req.session.pendingVerification = { userId: user.IDuser, username: user.username, email: user.email, code, expiresAt: Date.now() + 30 * 60 * 1000, attempts: 0 };
             req.session.save(() => res.redirect("/auth/verify"));
           });
@@ -333,18 +369,9 @@ app.post("/auth/login", limits.loginIp, limits.loginAccount, validationLoginRule
           return res.render("login", { title: "Login", error: "Session error. Please try again.", user: null });
         }
 
-        // Check if user has any groups — if so, go straight to groups
-        connection.query(
-          "SELECT COUNT(*) as cnt FROM tbl_group_members WHERE userId = ?",
-          [user.IDuser],
-          function (grpErr, grpRows) {
-            if (!grpErr && grpRows && grpRows[0].cnt > 0) {
-              res.redirect("/groups");
-            } else {
-              res.redirect("/profile");
-            }
-          }
-        );
+        landingAfterSignIn(req, req.session.user).then(function (to) {
+          req.session.save(function () { res.redirect(to); });
+        });
       });
       });
     }
@@ -529,48 +556,24 @@ app.post("/auth/verify", validationVerifyRules, (req, res) => {
         return res.render("register-step2", { title: "Verify", error: "Verification failed. Please try again.", email: pending.email, user: null });
       }
 
-      // If user registered via invite link, add them to the group
+      // Straight into the trip they were invited to, or the welcome page.
       var pendingInvite = req.session.pendingInvite;
+      var pendingInviteTrip = req.session.pendingInviteTrip;
       req.session.regenerate(() => {
-      req.session.user = {
-        id: pending.userId,
-        username: pending.username,
-        email: pending.email,
-      };
-
-      if (pendingInvite) {
-        connection.query(
-          "SELECT * FROM tbl_groups WHERE inviteCode = ?",
-          [pendingInvite],
-          function(invErr, invRows) {
-            if (!invErr && invRows && invRows.length > 0) {
-              var group = invRows[0];
-              connection.query(
-                "INSERT IGNORE INTO tbl_group_members (groupId, userId, username, email) VALUES (?, ?, ?, ?)",
-                [group.id, pending.userId, pending.username, pending.email],
-                function() {
-                  console.log(pending.username + " auto-joined group via invite: " + group.name);
-                  req.session.save(() => {
-                    res.redirect("/groups/" + group.id);
-                  });
-                }
-              );
-            } else {
-              req.session.save(() => { res.redirect("/setup"); });
-            }
-          }
-        );
-      } else {
-        req.session.save(() => {
-          res.redirect("/setup");
+        req.session.user = {
+          id: pending.userId,
+          username: pending.username,
+          email: pending.email,
+        };
+        if (pendingInvite) { req.session.pendingInvite = pendingInvite; req.session.pendingInviteTrip = pendingInviteTrip; }
+        landingAfterSignIn(req, req.session.user).then(function (to) {
+          req.session.save(() => res.redirect(to));
         });
-      }
       });
     }
   );
 });
 
-// ── RESEND CODE ──────────────────────────────────────────────────────────
 app.get("/auth/resend-code", limits.resend, async (req, res) => {
   const pending = req.session.pendingVerification;
   if (!pending) return res.redirect("/auth/register");
@@ -717,6 +720,35 @@ app.post("/auth/reset-password", (req, res) => {
 });
 
 // ── PROFILE SETUP ────────────────────────────────────────────────────────
+// ── WELCOME (first stop after sign-up for people without a trip) ─────────
+function renderWelcome(req, res, error, value) {
+  connection.query("SELECT COUNT(*) AS cnt FROM tbl_group_members WHERE userId = ?", [req.session.user.id], function (err, rows) {
+    res.status(error ? 400 : 200).render("welcome", {
+      title: "Welcome",
+      user: req.session.user,
+      hasTrips: !err && rows && rows[0] && Number(rows[0].cnt) > 0,
+      error: error || null,
+      value: value || "",
+    });
+  });
+}
+
+app.get("/welcome", requireAuth, (req, res) => renderWelcome(req, res));
+
+app.post("/welcome/join", requireAuth, async (req, res) => {
+  const input = String(req.body.invite || "").trim().slice(0, 500);
+  if (!input) return renderWelcome(req, res, "Paste the invite link your friend sent you.", input);
+  try {
+    const trip = await invites.findTrip(input);
+    if (!trip) return renderWelcome(req, res, "That invite link doesn't work. Check you copied all of it, or ask your friend to send it again.", input);
+    await invites.joinTrip(trip, req.session.user);
+    res.redirect("/groups/" + trip.id);
+  } catch (e) {
+    console.error("Welcome join error:", e.message);
+    renderWelcome(req, res, "Something went wrong. Please try again.", input);
+  }
+});
+
 app.get("/setup", requireAuth, (req, res) => {
   res.render("setup", {
     title: "Profile Setup",
@@ -1461,24 +1493,8 @@ app.post("/api/groups/invite", requireAuth, requireMember(), (req, res) => {
             }
             var gName = gRows[0].name;
             var joinLink = siteBase(req) + '/groups/join/' + gRows[0].inviteCode;
-            var safeName = escapeHtml(userName), safeGroup = escapeHtml(gName);
-            sendEmail({
-              to: query.trim(),
-              subject: userName + ' invited you to join "' + gName + '" on Atlasphere',
-              html: `
-                <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;">
-                  <h1 style="color:#0B3856;font-size:24px;">You've been invited!</h1>
-                  <p style="color:#555;font-size:16px;line-height:1.6;">
-                    <strong>${safeName}</strong> invited you to join the <strong>"${safeGroup}"</strong> group on Atlasphere.
-                  </p>
-                  <a href="${joinLink}" style="display:inline-block;margin:24px 0;padding:14px 32px;background:#E8933A;color:#fff;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;">
-                    Join "${safeGroup}"
-                  </a>
-                  <p style="color:#888;font-size:13px;">
-                    You'll need to create a free account to join. The link above will take you straight there.
-                  </p>
-                </div>
-              `
+            sendEmail(require("./routes/groups").inviteEmail(userName, gName, joinLink, query.trim())).then(function(sent) {
+              if (!sent) console.error('Invite email not sent for trip', groupId);
             }).catch(function(e) { console.error('Invite email error:', e.message); });
             return res.json({ success: true, message: 'Invite sent to ' + query.trim() });
           }
