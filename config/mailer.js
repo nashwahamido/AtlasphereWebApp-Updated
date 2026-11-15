@@ -4,6 +4,7 @@
 //   BREVO_API_KEY   — transactional API key from your Brevo account
 //   MAIL_FROM       — sender email verified in Brevo (e.g. "Atlasphere" <you@example.com> or you@example.com)
 //   MAIL_FROM_NAME  — optional display name (defaults to "Atlasphere")
+//   MAIL_REPLY_TO   — optional reply-to address (replies are a trust signal)
 const axios = require("axios");
 
 const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
@@ -20,10 +21,28 @@ function parseSender() {
   return { name: nameEnv || "Atlasphere", email: raw };
 }
 
+// Plain-text version of an HTML body. Mail with only an HTML part looks
+// more like spam to filters, so every email also carries a text part.
+function htmlToText(html) {
+  return String(html || "")
+    .replace(/<(br|\/p|\/div|\/h[1-6]|\/li)\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .split("\n").map(function(l) { return l.trim(); })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // Send one transactional email. Returns true on success, false otherwise —
 // callers already handle a false return gracefully (verification codes are
 // also logged to the server console as a fallback).
-async function sendEmail({ to, subject, html }) {
+async function sendEmail({ to, subject, html, text }) {
   const apiKey = (process.env.BREVO_API_KEY || "").trim();
   const sender = parseSender();
 
@@ -34,15 +53,20 @@ async function sendEmail({ to, subject, html }) {
     return false;
   }
 
+  const payload = {
+    sender: { name: sender.name, email: sender.email },
+    to: [{ email: to }],
+    subject: subject,
+    htmlContent: html,
+    textContent: text || htmlToText(html),
+  };
+  const replyTo = (process.env.MAIL_REPLY_TO || "").trim();
+  if (replyTo) payload.replyTo = { email: replyTo };
+
   try {
     const response = await axios.post(
       BREVO_ENDPOINT,
-      {
-        sender: { name: sender.name, email: sender.email },
-        to: [{ email: to }],
-        subject: subject,
-        htmlContent: html,
-      },
+      payload,
       {
         headers: {
           "api-key": apiKey,
@@ -64,4 +88,4 @@ async function sendEmail({ to, subject, html }) {
   }
 }
 
-module.exports = { sendEmail };
+module.exports = { sendEmail, htmlToText };
