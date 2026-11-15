@@ -25,11 +25,7 @@ function parsePrefs(value) {
   }
 }
 
-function inviteCodeFrom(input) {
-  const s = String(input || "").trim();
-  const m = s.match(/groups\/join\/([A-Za-z0-9]+)/) || s.match(/^([A-Za-z0-9]{6,32})$/);
-  return m ? m[1] : null;
-}
+const { inviteCodeFrom, notifyJoined } = require("./invites");
 
 module.exports = function createTrips(pool, opts) {
   const db = pool.promise ? pool.promise() : pool;
@@ -133,12 +129,16 @@ module.exports = function createTrips(pool, opts) {
   async function join(user, codeOrLink) {
     const code = inviteCodeFrom(codeOrLink);
     if (!code) throw new TripError(400, "That doesn't look like an invite link.");
-    const [rows] = await db.query("SELECT id FROM tbl_groups WHERE inviteCode = ? LIMIT 1", [code]);
+    const [rows] = await db.query("SELECT id, name FROM tbl_groups WHERE inviteCode = ? LIMIT 1", [code]);
     if (!rows.length) throw new TripError(404, "That invite link is invalid or has expired.");
-    await db.query(
+    const [result] = await db.query(
       "INSERT IGNORE INTO tbl_group_members (groupId, userId, username, email) VALUES (?, ?, ?, ?)",
       [rows[0].id, user.IDuser, user.username, user.email]
     );
+    if (result && result.affectedRows === 1) {
+      await notifyJoined(db, { id: rows[0].id, name: rows[0].name || "a trip" }, { id: user.IDuser, username: user.username })
+        .catch((e) => console.error("Join notification error:", e.message));
+    }
     return String(rows[0].id);
   }
 

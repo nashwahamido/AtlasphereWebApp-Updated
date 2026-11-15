@@ -36,6 +36,28 @@
     <p class="admin-team">Includes everyone. To leave out your team’s test accounts, add their emails to STATS_EXCLUDE_EMAILS in Railway.</p>
   <% } %>
 
+  <% if (stats.funnel) { var f = stats.funnel, top = f.steps[0].n || 0; %>
+  <h2>How far people get</h2>
+  <p class="admin-note">Out of everyone who signed up. The line under each bar shows how many people from the step above made it this far (red when fewer than half did).</p>
+  <ol class="admin-funnel">
+    <% f.steps.forEach(function (st, i) {
+         var pct = top ? Math.round(st.n / top * 100) : 0;
+         var prev = i ? f.steps[i - 1].n : null;
+         var kept = i && prev ? Math.round(st.n / prev * 100) : null; %>
+      <li class="admin-funnel__step">
+        <div class="admin-funnel__head"><span><%= st.label %></span><b><%= n(st.n) %> <span class="admin-muted">· <%= pct %>%</span></b></div>
+        <div class="admin-funnel__track"><div class="admin-funnel__bar" style="width:<%= Math.max(pct, st.n ? 2 : 0) %>%"></div></div>
+        <% if (i) { %><span class="admin-funnel__kept<%= kept !== null && kept < 50 ? ' admin-funnel__kept--low' : '' %>"><%= kept === null ? '–' : kept + '% of the step above' %></span><% } %>
+      </li>
+    <% }) %>
+  </ol>
+  <div class="admin-grid">
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(f.started) %></span><span class="admin-tile__label">started a trip</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(f.gotJoiner) %></span><span class="admin-tile__label">had a friend join their trip</span></div>
+    <div class="admin-tile"><span class="admin-tile__num"><%= n(f.joinedOther) %></span><span class="admin-tile__label">joined someone else’s trip</span></div>
+  </div>
+  <% } %>
+
   <h2>People</h2>
   <div class="admin-grid">
     <div class="admin-tile"><span class="admin-tile__num"><%= n(u.week) %></span><span class="admin-tile__label">new this week</span></div>

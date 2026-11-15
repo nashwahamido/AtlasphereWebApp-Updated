@@ -1,10 +1,10 @@
 var express = require("express");
 var sharp = require("sharp");
-var axios = require("axios");
 var router = express.Router();
 var crypto = require("crypto");
 var countries = require("../data/countries");
 var { siteBase, escapeHtml } = require("../config/security");
+var { sendEmail } = require("../config/mailer");
 
 // Only a trip's members may open or change it (membership helper is set up
 // in server.js; see config/security.js).
@@ -160,27 +160,56 @@ var groupData = {
         return res.status(500).send("Failed to create group");
       }
 
-      // Add creator as member
+      // Add creator as member, then show the invite page. Redirecting (rather
+      // than rendering here) means a refresh doesn't create the trip again.
       db.query(
         "INSERT IGNORE INTO tbl_group_members (groupId, userId, username, email) VALUES (?, ?, ?, ?)",
         [groupData.id, user.id, user.username, user.email],
         function () {
-          var inviteLink = siteBase(req) + "/groups/join/" + inviteCode;
-
-          groupData.members = [{ id: user.id, username: user.username, email: user.email }];
-
-          res.render("groups/create-confirm", {
-            title: "Group Created",
-            user: user,
-            group: groupData,
-            inviteLink: inviteLink,
-            inviteSuccess: null,
-            inviteError: null
-          });
+          res.redirect("/groups/" + groupData.id + "/invite?new=1");
         }
       );
     }
   );
+});
+
+// The "invite your friends" page: shown right after creating a trip, and
+// reachable later from the trip.
+function renderInvite(req, res, group) {
+  var flash = req.session.inviteFlash || {};
+  delete req.session.inviteFlash;
+  res.render("groups/create-confirm", {
+    title: "Invite friends",
+    user: req.session.user,
+    group: group,
+    isNew: req.query.new === "1",
+    inviteLink: siteBase(req) + "/groups/join/" + group.inviteCode,
+    inviteSuccess: flash.success || null,
+    inviteError: flash.error || null,
+  });
+}
+
+function backToInvite(req, res, groupId, flash) {
+  req.session.inviteFlash = flash;
+  req.session.save(function () {
+    res.redirect("/groups/" + encodeURIComponent(groupId) + "/invite" + (req.body.isNew === "1" ? "?new=1" : ""));
+  });
+}
+
+router.get("/:id/invite", member({ page: true }), function (req, res) {
+  loadGroup(getDb(req), req.params.id, function (err, group) {
+    if (!group) return res.status(404).render("error", { status: 404, message: "Group not found", user: req.session.user });
+    renderInvite(req, res, group);
+  });
+});
+
+// Who's on the trip (names only), so the invite page can show people joining.
+router.get("/:id/members", member(), function (req, res) {
+  getDb(req).query("SELECT userId, username FROM tbl_group_members WHERE groupId = ? ORDER BY id", [req.params.id], function (err, rows) {
+    if (err) return res.status(500).json({ error: "Couldn't load members" });
+    res.set("Cache-Control", "no-store");
+    res.json({ members: (rows || []).map(function (r) { return { id: String(r.userId), username: r.username }; }) });
+  });
 });
 
 // ── Upload group photo ──────────────────────────────────────────────────
@@ -213,141 +242,106 @@ router.post("/upload-photo", requireGroupAuth, member(), function (req, res) {
     });
 });
 
-// ── Invite by email ─────────────────────────────────────────────────────
-router.post("/invite", requireGroupAuth, member(), async function (req, res) {
+// ── Invite by email or username (the form on the invite page) ──────────
+router.post("/invite", requireGroupAuth, member(), function (req, res) {
   var db = getDb(req);
   var groupId = req.body.groupId;
-  var friendEmail = req.body.friendEmail || '';
-  var friendUsername = req.body.friendUsername || '';
+  var friendEmail = String(req.body.friendEmail || "").trim();
+  var friendUsername = String(req.body.friendUsername || "").trim();
   var user = req.session.user;
 
   loadGroup(db, groupId, function (err, group) {
     if (!group) return res.status(404).send("Group not found");
-
     var inviteLink = siteBase(req) + "/groups/join/" + group.inviteCode;
 
     // Username invite: look up user and add directly
     if (friendUsername) {
-      db.query("SELECT IDuser, username, email FROM tbl_users WHERE username = ?", [friendUsername], function(uErr, uRows) {
+      db.query("SELECT IDuser, username, email FROM tbl_users WHERE username = ? AND isConfirmed = 1", [friendUsername], function (uErr, uRows) {
         if (uErr || !uRows || uRows.length === 0) {
-          return res.render("groups/create-confirm", {
-            title: "Group Created", user: user, group: group,
-            inviteLink: inviteLink,
-            inviteSuccess: null,
-            inviteError: 'User "' + friendUsername + '" not found'
-          });
+          return backToInvite(req, res, group.id, { error: 'No one called "' + friendUsername + '" is on Atlasphere. Try their email instead.' });
         }
         var friend = uRows[0];
         db.query(
           "INSERT IGNORE INTO tbl_group_members (groupId, userId, username, email) VALUES (?, ?, ?, ?)",
           [group.id, friend.IDuser, friend.username, friend.email],
-          function() {
-            // Send notification to the invited user
-            var inviterName = user ? user.username : 'Someone';
-            var notifMsg = inviterName + ' added you to "' + group.name + '"';
-            db.query(
-              "INSERT INTO tbl_notifications (userId, groupId, groupName, message, type) VALUES (?, ?, ?, ?, ?)",
-              [friend.IDuser, group.id, group.name, notifMsg, 'invite'],
-              function(nErr) {
-                if (nErr) console.error("Invite notification error:", nErr.message);
-                else console.log("Invite notification sent to", friend.username, "for group", group.name);
-              }
-            );
-
-            return res.render("groups/create-confirm", {
-              title: "Group Created", user: user, group: group,
-              inviteLink: inviteLink,
-              inviteSuccess: friend.username + ' has been added to ' + group.name + '!',
-              inviteError: null
-            });
+          function (mErr, result) {
+            if (result && result.affectedRows === 1) {
+              db.query(
+                "INSERT INTO tbl_notifications (userId, groupId, groupName, message, type) VALUES (?, ?, ?, ?, ?)",
+                [friend.IDuser, group.id, group.name, user.username + ' added you to "' + group.name + '"', "invite"],
+                function (nErr) { if (nErr) console.error("Invite notification error:", nErr.message); }
+              );
+            }
+            backToInvite(req, res, group.id, { success: friend.username + " is now on the trip!" });
           }
         );
       });
       return;
     }
 
-    // Email invite flow
-    if (!friendEmail) {
-      return res.render("groups/create-confirm", {
-        title: "Group Created", user: user, group: group,
-        inviteLink: inviteLink,
-        inviteSuccess: null,
-        inviteError: "Please enter an email or username"
-      });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(friendEmail) || friendEmail.length > 254) {
+      return backToInvite(req, res, group.id, { error: "Enter an email address or an Atlasphere username." });
     }
 
     var limiter = req.app.get("limits") && req.app.get("limits").inviteEmail;
     if (limiter && limiter.take(String(user.id))) {
-      return res.status(429).render("groups/create-confirm", {
-        title: "Group Created", user: user, group: group, inviteLink: inviteLink, inviteSuccess: null,
-        inviteError: "You've sent a lot of invites. Please try again later, or share the link instead."
-      });
+      return backToInvite(req, res, group.id, { error: "You've sent a lot of invites. Please try again later, or share the link instead." });
     }
-    var senderName = escapeHtml(user ? user.username : "Someone");
-    var safeGroupName = escapeHtml(group.name);
-    axios.post(
-      "https://api.mailjet.com/v3.1/send",
-      {
-        Messages: [{
-          From: { Email: process.env.MAIL_FROM || "atlasphretravelapp@gmail.com", Name: "Atlasphere" },
-          To: [{ Email: friendEmail }],
-          Subject: (user ? user.username : "Someone") + " invited you to join " + group.name + " on Atlasphere!",
-          HTMLPart: "<div style=\"font-family:Arial;max-width:480px;margin:0 auto;padding:32px\">" +
-                "<h1 style=\"color:#0B3856\">You're invited!</h1>" +
-                "<p style=\"font-size:16px;color:#555\">" + senderName + " wants you to join their trip group <strong>" + safeGroupName + "</strong> on Atlasphere.</p>" +
-                "<div style=\"text-align:center;margin:32px 0\">" +
-                "<a href=\"" + inviteLink + "\" style=\"display:inline-block;padding:14px 40px;background:#E8933A;color:#fff;text-decoration:none;border-radius:30px;font-weight:700;font-size:16px\">Join Group</a>" +
-                "</div></div>"
-        }]
-      },
-      { auth: { username: process.env.MAILJET_API_KEY, password: process.env.MAILJET_SECRET_KEY } }
-    ).then(function () {
-      res.render("groups/create-confirm", {
-        title: "Group Created", user: user, group: group,
-        inviteLink: inviteLink,
-        inviteSuccess: "Invite sent to " + friendEmail + "!",
-        inviteError: null
-      });
-    }).catch(function (mailErr) {
-      console.error("Invite email error:", mailErr.response ? JSON.stringify(mailErr.response.data) : mailErr.message);
-      res.render("groups/create-confirm", {
-        title: "Group Created", user: user, group: group,
-        inviteLink: inviteLink,
-        inviteSuccess: null,
-        inviteError: "Failed to send email. Share this link instead: " + inviteLink
-      });
+
+    sendEmail(inviteEmail(user.username, group.name, inviteLink, friendEmail)).then(function (sent) {
+      backToInvite(req, res, group.id, sent
+        ? { success: "Invite sent to " + friendEmail + ". Tell them to check their spam folder if it doesn't arrive." }
+        : { error: "We couldn't send that email. Copy the link and send it to them instead." });
     });
   });
 });
 
+// The invitation email (also used by the trip chat's invite box).
+function inviteEmail(fromName, tripName, link, to) {
+  var safeFrom = escapeHtml(fromName || "A friend");
+  var safeTrip = escapeHtml(tripName || "a trip");
+  return {
+    to: to,
+    subject: (fromName || "A friend") + ' invited you to plan "' + (tripName || "a trip") + '" on Atlasphere',
+    text: [
+      (fromName || "A friend") + ' invited you to plan their trip "' + (tripName || "a trip") + '" together on Atlasphere.',
+      "",
+      "Join the trip: " + link,
+      "",
+      "It's free. If you don't have an account yet, the link takes you to sign-up and then straight into the trip.",
+    ].join("\n"),
+    html:
+      '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;">' +
+      '<h1 style="color:#0B3856;font-size:24px;">You\'re invited!</h1>' +
+      '<p style="color:#555;font-size:16px;line-height:1.6;"><strong>' + safeFrom + '</strong> invited you to plan their trip <strong>&ldquo;' + safeTrip + '&rdquo;</strong> together on Atlasphere.</p>' +
+      '<p style="text-align:center;margin:28px 0;"><a href="' + escapeHtml(link) + '" style="display:inline-block;padding:14px 32px;background:#E8933A;color:#fff;border-radius:30px;text-decoration:none;font-weight:700;font-size:16px;">Join the trip</a></p>' +
+      '<p style="color:#888;font-size:13px;line-height:1.6;">It\'s free. If you don\'t have an account yet, the link takes you to sign-up and then straight into the trip.</p>' +
+      '</div>',
+  };
+}
+
 // ── Join via invite link ────────────────────────────────────────────────
 router.get("/join/:code", function (req, res) {
-  var db = getDb(req);
-
-  db.query("SELECT * FROM tbl_groups WHERE inviteCode = ?", [req.params.code], function (err, rows) {
-    if (err || rows.length === 0) {
+  var invites = req.app.get("invites");
+  invites.findTrip(req.params.code).then(function (trip) {
+    if (!trip) {
       return res.status(404).render("error", {
-        status: 404, message: "Invalid or expired invite link", user: req.session.user || null
+        status: 404, message: "This invite link doesn't work any more. Ask your friend to send a new one.", user: req.session.user || null
       });
     }
-
-    var group = rows[0];
     var user = req.session.user;
-
     if (!user) {
-      req.session.pendingInvite = req.params.code;
-      req.session.save(function () { res.redirect("/auth/register"); });
-      return;
+      // Remember the invite through sign-up (or login) and say which trip it is.
+      req.session.pendingInvite = trip.code;
+      req.session.pendingInviteTrip = { name: trip.name, flag: trip.flag };
+      return req.session.save(function () { res.redirect("/auth/register"); });
     }
-
-    db.query(
-      "INSERT IGNORE INTO tbl_group_members (groupId, userId, username, email) VALUES (?, ?, ?, ?)",
-      [group.id, user.id, user.username, user.email],
-      function () {
-        console.log(user.username + " joined group: " + group.name);
-        res.redirect("/groups/" + group.id);
-      }
-    );
+    return invites.joinTrip(trip, user).then(function () {
+      res.redirect("/groups/" + trip.id);
+    });
+  }).catch(function (err) {
+    console.error("Join error:", err.message);
+    res.status(500).render("error", { status: 500, message: "Something went wrong. Please try again.", user: req.session.user || null });
   });
 });
 
@@ -359,7 +353,7 @@ router.get("/", function (req, res) {
   var db = getDb(req);
   loadUserGroups(db, user.id, function (err, userGroups) {
     if (userGroups.length === 0) {
-      return res.redirect("/groups/create/country");
+      return res.redirect("/welcome");
     }
 
     res.render("groups/groupPage", {
@@ -466,3 +460,4 @@ router.post("/update-activities/:id", requireGroupAuth, member(), function (req,
 });
 
 module.exports = router;
+module.exports.inviteEmail = inviteEmail;

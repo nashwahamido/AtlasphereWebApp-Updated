@@ -4,92 +4,164 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <%- include('../partials/head-meta') %>
-  <title>Group Created - Atlasphere</title>
+  <title>Invite friends - Atlasphere</title>
   <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
 <%- include('../partials/navbar', { user: typeof user !== 'undefined' ? user : null }) %>
+<%
+  var isNew = typeof isNew !== 'undefined' && isNew;
+  var tripName = group && group.name ? group.name : 'your trip';
+  var members = group && group.members ? group.members : [];
+  var shareText = 'Join my trip "' + tripName + '" on Atlasphere so we can plan it together: ' + inviteLink;
+%>
 <div class="framed-page">
   <div class="framed-box">
-    <div class="framed-box__bg"><img src="/images/setup-desert.jpg" alt="Desert"></div>
+    <div class="framed-box__bg"><img src="/images/setup-desert.jpg" alt=""></div>
     <div class="framed-box__content">
       <div class="gc-content">
         <div class="gc-left">
-          <h1>Your &ldquo;<%= typeof group !== 'undefined' && group ? group.name : 'My Trip' %>&rdquo; group<br>has been created!</h1>
-          <% if (typeof inviteSuccess !== 'undefined' && inviteSuccess) { %><div class="msg-success gc-invite-msg"><%= inviteSuccess %></div><% } %>
-          <% if (typeof inviteError !== 'undefined' && inviteError) { %><div class="msg-error gc-invite-msg"><%= inviteError %></div><% } %>
-          <p class="gc-invite-label">Invite a friend by email or username</p>
+          <% if (isNew) { %>
+            <p class="gc-kicker">Next: invite your group</p>
+            <h1><%= group.flag || '' %> Your &ldquo;<%= tripName %>&rdquo; trip is ready!</h1>
+          <% } else { %>
+            <h1>Invite friends to &ldquo;<%= tripName %>&rdquo;</h1>
+          <% } %>
+          <p class="gc-lead">Atlasphere is for planning together. Send your friends this link and they can join in one tap.</p>
+
+          <% if (inviteSuccess) { %><div class="msg-success gc-invite-msg" role="status"><%= inviteSuccess %></div><% } %>
+          <% if (inviteError) { %><div class="msg-error gc-invite-msg" role="alert"><%= inviteError %></div><% } %>
+
+          <div class="gc-link">
+            <input type="text" id="inviteLink" value="<%= inviteLink %>" readonly aria-label="Invite link" onclick="this.select()">
+            <button type="button" class="gc-link__copy" id="copyBtn">Copy</button>
+          </div>
+          <div class="gc-share">
+            <a class="gc-share-btn gc-share-btn--wa" href="https://wa.me/?text=<%= encodeURIComponent(shareText) %>" target="_blank" rel="noopener">WhatsApp</a>
+            <button type="button" class="gc-share-btn" id="nativeShare" hidden>Share…</button>
+          </div>
+
+          <p class="gc-invite-label">Or send an invite by email or Atlasphere username</p>
           <form action="/groups/invite" method="post" class="gc-search" id="inviteForm">
-            <input type="hidden" name="groupId" value="<%= typeof group !== 'undefined' && group ? group.id : '' %>">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.6;">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" name="friendInput" id="friendInput" placeholder="Email or username..." required>
-            <button type="submit" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;display:inline-flex;align-items:center;padding:2px;transition:color 0.15s;" onmouseover="this.style.color='#E8933A'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
+            <input type="hidden" name="groupId" value="<%= group.id %>">
+            <input type="hidden" name="isNew" value="<%= isNew ? '1' : '' %>">
+            <input type="text" name="friendInput" id="friendInput" placeholder="friend@email.com or username" autocomplete="off" required aria-label="Email or username">
+            <button type="submit" class="gc-search__send">Send</button>
           </form>
-          <p class="gc-or">or</p>
-          <button type="button" class="gc-share-btn" onclick="copyLink()">Share Link</button>
-          <input type="hidden" id="inviteLinkHidden" value="<%= typeof inviteLink !== 'undefined' ? inviteLink : '' %>">
-          <br>
-          <a href="/groups/create/activities?groupId=<%= typeof group !== 'undefined' && group ? group.id : '' %>" class="gc-go-btn">Continue to Activities</a>
+
+          <div class="gc-members">
+            <p class="gc-invite-label">Who&rsquo;s in <span id="memberCount">(<%= members.length %>)</span></p>
+            <ul class="gc-members__list" id="memberList">
+              <% members.forEach(function (m) { %>
+                <li class="gc-member"><span class="gc-member__dot" aria-hidden="true"><%= (m.username || '?').charAt(0).toUpperCase() %></span><%= m.username %><% if (String(m.userId) === String(user.id)) { %> <em>(you)</em><% } %></li>
+              <% }) %>
+            </ul>
+            <p class="gc-members__hint" id="memberHint"<% if (members.length > 1) { %> hidden<% } %>>Just you so far. Friends show up here as soon as they join.</p>
+          </div>
+
+          <div class="gc-next">
+            <% if (isNew) { %>
+              <a href="/groups/create/activities?groupId=<%= group.id %>" class="gc-go-btn">Next: what do you like doing?</a>
+              <a href="/groups/<%= group.id %>" class="gc-skip-btn">Skip to the trip</a>
+            <% } else { %>
+              <a href="/groups/<%= group.id %>" class="gc-go-btn">Back to the trip</a>
+            <% } %>
+          </div>
         </div>
         <div class="gc-right">
           <form action="/groups/upload-photo" method="post" enctype="multipart/form-data" id="groupPhotoForm">
-            <input type="hidden" name="groupId" value="<%= typeof group !== 'undefined' && group ? group.id : '' %>">
+            <input type="hidden" name="groupId" value="<%= group.id %>">
+            <input type="hidden" name="redirectTo" value="/groups/<%= group.id %>/invite<%= isNew ? '?new=1' : '' %>">
             <div class="gc-upload-circle" id="uploadCircle" onclick="document.getElementById('groupPicInput').click();" style="cursor:pointer;">
-              <svg class="gc-img-icon" id="photoPlaceholder" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="4" stroke="#9aa" stroke-width="1.5"/><path d="M2 16l5-5 4 4 3-3 8 8H6a4 4 0 01-4-4v0z" fill="#bcc"/><circle cx="8.5" cy="8.5" r="2" fill="#bcc"/></svg>
-              <img class="gc-preview" id="previewImg" alt="Preview">
+              <svg class="gc-img-icon" id="photoPlaceholder" viewBox="0 0 24 24" fill="none"<% if (group.photo) { %> style="display:none"<% } %>><rect x="2" y="2" width="20" height="20" rx="4" stroke="#9aa" stroke-width="1.5"/><path d="M2 16l5-5 4 4 3-3 8 8H6a4 4 0 01-4-4v0z" fill="#bcc"/><circle cx="8.5" cy="8.5" r="2" fill="#bcc"/></svg>
+              <img class="gc-preview" id="previewImg" alt="Trip picture"<% if (group.photo) { %> src="<%= group.photo %>" style="display:block"<% } %>>
               <input type="file" name="groupPhoto" accept="image/*" id="groupPicInput" style="display:none;">
             </div>
-            <button type="button" class="gc-upload-btn" id="uploadBtn" onclick="document.getElementById('groupPicInput').click();">Upload Group Picture</button>
+            <button type="button" class="gc-upload-btn" id="uploadBtn" onclick="document.getElementById('groupPicInput').click();"><%= group.photo ? 'Change trip picture' : 'Add a trip picture' %></button>
           </form>
         </div>
       </div>
     </div>
   </div>
 </div>
-<div class="copied-toast" id="copiedToast">Link copied!</div>
+<div class="copied-toast" id="copiedToast" role="status">Link copied!</div>
 <script>
-  var s=localStorage.getItem('atlasphere-theme');if(s)document.documentElement.setAttribute('data-theme',s);
-  function copyLink(){var l=document.getElementById('inviteLinkHidden').value;if(!l)return;navigator.clipboard.writeText(l).then(function(){var t=document.getElementById('copiedToast');t.style.display='block';setTimeout(function(){t.style.display='none';},2000);});}
+(function () {
+  var s = null; try { s = localStorage.getItem('atlasphere-theme'); } catch (e) {}
+  if (s) document.documentElement.setAttribute('data-theme', s);
 
-  document.getElementById('inviteForm').addEventListener('submit', function(e) {
+  var link = document.getElementById('inviteLink');
+  function toast() { var t = document.getElementById('copiedToast'); t.style.display = 'block'; setTimeout(function () { t.style.display = 'none'; }, 2000); }
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var btn = this;
+    function done() { btn.textContent = 'Copied!'; toast(); setTimeout(function () { btn.textContent = 'Copy'; }, 2000); }
+    function fallback() { link.select(); try { document.execCommand('copy'); } catch (e) {} done(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link.value).then(done, fallback);
+    else fallback();
+  });
+
+  var shareBtn = document.getElementById('nativeShare');
+  if (navigator.share) {
+    shareBtn.hidden = false;
+    shareBtn.addEventListener('click', function () {
+      navigator.share({ title: 'Join my trip on Atlasphere', text: <%- JSON.stringify('Join my trip "' + tripName + '" on Atlasphere so we can plan it together:').replace(/</g, '\\u003c') %>, url: link.value }).catch(function () {});
+    });
+  }
+
+  // Email if it has an @, otherwise a username.
+  document.getElementById('inviteForm').addEventListener('submit', function (e) {
     e.preventDefault();
-    var input = document.getElementById('friendInput');
-    var val = input.value.trim();
+    var val = document.getElementById('friendInput').value.trim();
     if (!val) return;
-    var old1 = this.querySelector('input[name="friendEmail"]');
-    var old2 = this.querySelector('input[name="friendUsername"]');
-    if (old1) old1.remove();
-    if (old2) old2.remove();
+    var form = this;
+    ['friendEmail', 'friendUsername'].forEach(function (n) { var o = form.querySelector('input[name="' + n + '"]'); if (o) o.remove(); });
     var hidden = document.createElement('input');
     hidden.type = 'hidden';
-    hidden.name = val.includes('@') ? 'friendEmail' : 'friendUsername';
+    hidden.name = val.indexOf('@') > -1 ? 'friendEmail' : 'friendUsername';
     hidden.value = val;
-    this.appendChild(hidden);
-    this.submit();
+    form.appendChild(hidden);
+    form.submit();
   });
 
-  document.getElementById('groupPicInput').addEventListener('change',function(e){
-    var f=e.target.files[0];
-    if(!f)return;
-    var r=new FileReader();
-    r.onload=function(ev){
-      var i=document.getElementById('previewImg');
-      i.src=ev.target.result;
-      i.style.display='block';
-      document.getElementById('photoPlaceholder').style.display='none';
+  document.getElementById('groupPicInput').addEventListener('change', function (e) {
+    var f = e.target.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function (ev) {
+      var i = document.getElementById('previewImg');
+      i.src = ev.target.result; i.style.display = 'block';
+      document.getElementById('photoPlaceholder').style.display = 'none';
     };
     r.readAsDataURL(f);
-    var btn=document.getElementById('uploadBtn');
-    btn.textContent='Save Group Picture';
-    btn.onclick=function(){ document.getElementById('groupPhotoForm').submit(); };
+    var btn = document.getElementById('uploadBtn');
+    btn.textContent = 'Save trip picture';
+    btn.onclick = function () { document.getElementById('groupPhotoForm').submit(); };
   });
+
+  // Show friends appearing as they join.
+  var me = <%- JSON.stringify(String(user.id)) %>;
+  var known = <%- JSON.stringify(members.map(function (m) { return String(m.userId); })) %>;
+  function refresh() {
+    if (document.hidden) return;
+    fetch('/groups/<%= group.id %>/members', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (!data || !data.members) return;
+      var list = document.getElementById('memberList');
+      data.members.forEach(function (m) {
+        if (known.indexOf(m.id) > -1) return;
+        known.push(m.id);
+        var li = document.createElement('li'); li.className = 'gc-member gc-member--new';
+        var dot = document.createElement('span'); dot.className = 'gc-member__dot'; dot.setAttribute('aria-hidden', 'true');
+        dot.textContent = (m.username || '?').charAt(0).toUpperCase();
+        li.appendChild(dot); li.appendChild(document.createTextNode(m.username + ' just joined!'));
+        list.appendChild(li);
+      });
+      document.getElementById('memberCount').textContent = '(' + data.members.length + ')';
+      document.getElementById('memberHint').hidden = data.members.length > 1;
+    }).catch(function () {});
+  }
+  setInterval(refresh, 10000);
+})();
 </script>
 </body>
 </html>

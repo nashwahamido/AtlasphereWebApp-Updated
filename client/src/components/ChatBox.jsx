@@ -344,7 +344,11 @@ var ChatBox = function(props) {
             type: 'button',
             className: 'gc-share-btn',
             onClick: handleCopyLink
-          }, inviteCopied ? 'Copied!' : 'Share Link')
+          }, inviteCopied ? 'Copied!' : 'Share Link'),
+          React.createElement('a', {
+            href: '/groups/' + encodeURIComponent(groupId) + '/invite',
+            className: 'cb__invite-more'
+          }, 'More ways to invite (WhatsApp, see who joined)')
         )
       )
     ),

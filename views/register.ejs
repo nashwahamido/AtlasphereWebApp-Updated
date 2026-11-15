@@ -16,6 +16,9 @@
     <div class="framed-box__content" style="display:flex;align-items:center;justify-content:center;">
       <div class="auth-card">
         <h1>Registration</h1>
+        <% if (typeof pendingInviteTrip !== 'undefined' && pendingInviteTrip) { %>
+          <div class="invite-banner" role="status">You&rsquo;re invited to join <strong><%= pendingInviteTrip.flag || '' %> <%= pendingInviteTrip.name %></strong>. Create a free account and you&rsquo;ll go straight into the trip. Already on Atlasphere? <a href="/auth/login">Log in</a> instead.</div>
+        <% } %>
         <% if (typeof error !== 'undefined' && error) { %><div class="msg-error"><%= error %></div><% } %>
         <form action="/auth/register" method="post">
           <div class="auth-fg"><label for="username">Name</label><input type="text" id="username" name="username" placeholder="Enter your name" required></div>
