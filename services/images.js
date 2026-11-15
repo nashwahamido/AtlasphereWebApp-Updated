@@ -29,6 +29,18 @@ module.exports = function createImages(pool, uploadDir) {
   }
 
   // Resize an uploaded image to a JPEG and store it. Returns "/uploads/<name>".
+  // The app sends photos as base64 in JSON ({ photoBase64 }), since Expo's
+  // fetch can't send React Native's file-style form uploads. Returns an
+  // object saveUpload() accepts, or null if there's no usable photo.
+  function fromBase64(value) {
+    if (typeof value !== "string" || !value) return null;
+    const b64 = value.replace(/^data:image\/[a-z+.-]+;base64,/i, "");
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(b64)) return null;
+    const data = Buffer.from(b64, "base64");
+    if (!data.length || data.length > 8 * 1024 * 1024) return null;
+    return { data, name: "photo.jpg", size: data.length };
+  }
+
   async function saveUpload(file, opts) {
     const buffer = await sharp(file.data)
       .rotate() // respect the phone's orientation
@@ -98,5 +110,5 @@ module.exports = function createImages(pool, uploadDir) {
     return added;
   }
 
-  return { ensureSchema, saveUpload, serve, backfill };
+  return { ensureSchema, saveUpload, fromBase64, serve, backfill };
 };
