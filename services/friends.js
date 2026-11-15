@@ -10,6 +10,7 @@
 // ask again later. `addresseeSeen` / `requesterSeen` drive the bell: a new
 // request is unseen by the addressee, an acceptance is unseen by the requester.
 const countries = require("../data/countries");
+const push = require("./push");
 
 const SCHEMA_SQL =
   "CREATE TABLE IF NOT EXISTS tbl_friendships (" +
@@ -88,6 +89,13 @@ module.exports = function createFriends(db) {
   // ── actions ────────────────────────────────────────────────────────────
   // Each returns the new relationship state.
 
+  // Tell the other person on their phone (fire and forget).
+  function pushAbout(me, other, make) {
+    db.query("SELECT username FROM tbl_users WHERE IDuser = ?", [me])
+      .then(([rows]) => push.sendToUsers([other], make((rows[0] && rows[0].username) || "Someone")))
+      .catch((e) => console.error("Friend push error:", e.message));
+  }
+
   async function sendRequest(me, otherRaw) {
     const other = toId(otherRaw);
     if (!other) throw new FriendError("We couldn't find that person.", 404);
@@ -110,6 +118,7 @@ module.exports = function createFriends(db) {
       if (err && err.code === "ER_DUP_ENTRY") return relationship(me, other);
       throw err;
     }
+    pushAbout(me, other, (name) => ({ title: "New friend request", body: name + " wants to be your friend on Atlasphere", data: { type: "friend-request", personId: Number(me) } }));
     return "outgoing";
   }
 
@@ -126,6 +135,7 @@ module.exports = function createFriends(db) {
       if (state === "friends") return state;
       throw new FriendError("That friend request is no longer available.", 409);
     }
+    pushAbout(me, other, (name) => ({ title: "Friend request accepted", body: name + " accepted your friend request", data: { type: "friend-accepted", personId: Number(me) } }));
     return "friends";
   }
 

@@ -14,6 +14,7 @@ const createFriends = require("../services/friends");
 const { siteBase } = require("../config/security");
 const { sendEmail } = require("../config/mailer");
 const { inviteEmail } = require("./groups");
+const push = require("../services/push");
 const { tripFromItinerary } = require("../services/destination").helpers;
 
 const HOURS = ["08.00", "09.00", "10.00", "11.00", "12.00", "13.00", "14.00", "15.00", "16.00", "17.00", "18.00", "19.00", "20.00", "21.00", "22.00", "23.00", "00.00", "01.00", "02.00"];
@@ -356,10 +357,25 @@ module.exports = function createMobilePlanRouter(deps) {
     return { user: { id: me(req), username: req.mobileUser.username, email: req.mobileUser.email, profilePictureUrl: photo } };
   }));
 
+  // ── PUSH NOTIFICATIONS (this phone's Expo push token) ─────────────────
+  router.post("/me/push-token", requireMobileAuth, route(async (req) => {
+    const token = req.body && req.body.token;
+    if (!push.isToken(token)) throw new BadRequest("That isn't a push token.");
+    const platform = ["ios", "android"].includes(req.body.platform) ? req.body.platform : null;
+    await push.saveToken(me(req), token, platform);
+    return { ok: true };
+  }));
+
+  router.delete("/me/push-token", requireMobileAuth, route(async (req) => {
+    await push.removeToken(me(req), req.body && req.body.token);
+    return { ok: true };
+  }));
+
   // Same as the website's Settings → Delete account.
   router.delete("/me", requireMobileAuth, route(async (req) => {
     if (!(req.body && req.body.confirm === true)) throw new BadRequest("Please confirm.");
     await db.query("DELETE FROM tbl_friendships WHERE requesterId = ? OR addresseeId = ?", [me(req), me(req)]).catch(() => {});
+    await push.removeUser(me(req)).catch(() => {});
     await db.query("DELETE FROM tbl_users WHERE IDuser = ?", [me(req)]);
     return { ok: true };
   }));
