@@ -55,3 +55,30 @@ test("membership: members and creators only", async () => {
   assert.equal((await run(null, { groupId: 10 })).status, 401);
   assert.equal((await run({ id: 1 }, {})).status, 400);
 });
+
+test("ADMIN_EMAILS tolerates quotes, spaces and separators", () => {
+  const saved = process.env.ADMIN_EMAILS;
+  try {
+    process.env.ADMIN_EMAILS = ' "Nashwa@Example.com" ; other@site.org,  not-an-email ';
+    const { adminEmails, isAdmin } = require("../routes/admin");
+    assert.deepEqual(adminEmails(), ["nashwa@example.com", "other@site.org"]);
+    assert.equal(isAdmin({ email: "nashwa@example.com " }), true);
+    assert.equal(isAdmin({ email: "someone@else.com" }), false);
+    process.env.ADMIN_EMAILS = "";
+    assert.equal(isAdmin({ email: "nashwa@example.com" }), false);
+  } finally {
+    process.env.ADMIN_EMAILS = saved;
+  }
+});
+
+test("live site never uses the built-in session secret", () => {
+  const { execFileSync } = require("node:child_process");
+  const run = (env) => execFileSync(process.execPath, ["-e", "process.stdout.write(require('./config/session').secret)"], { cwd: __dirname + "/..", env: Object.assign({ PATH: process.env.PATH }, env), stdio: ["ignore", "pipe", "ignore"] }).toString();
+  const dev = "atlasphere-secret-key-change-in-production";
+  assert.equal(run({}), dev); // local development
+  const a = run({ RAILWAY_ENVIRONMENT: "production" });
+  const b = run({ RAILWAY_ENVIRONMENT: "production" });
+  assert.notEqual(a, dev);
+  assert.ok(a.length >= 64 && a !== b, "random per start");
+  assert.equal(run({ RAILWAY_ENVIRONMENT: "production", SESSION_SECRET: "x".repeat(40) }), "x".repeat(40));
+});
