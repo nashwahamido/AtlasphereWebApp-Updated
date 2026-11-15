@@ -230,6 +230,27 @@ module.exports = function createMobileRouter(deps) {
   );
 
   // ── RESEND CODE ──────────────────────────────────────────────────────
+  // ── Sign in with Google (see services/googleAuth.js) ──────────────────
+  router.get("/auth/providers", (req, res) => {
+    const g = req.app.get("googleAuth");
+    res.json({ google: !!(g && g.configured()) });
+  });
+
+  // The app swaps the one-time code from the Google sign-in for a token.
+  router.post("/auth/google", async (req, res) => {
+    try {
+      const g = req.app.get("googleAuth");
+      const result = g && g.redeemAppCode(req.body && req.body.code, req.body && req.body.verifier);
+      if (!result) return fail(res, 400, "That Google sign-in has expired. Please try again.");
+      const row = await g.userById(result.userId);
+      if (!row) return fail(res, 400, "That Google sign-in has expired. Please try again.");
+      res.json({ token: accessToken(row), user: publicUser(row), isNewUser: result.isNew });
+    } catch (err) {
+      console.error("Mobile Google sign-in error:", err.message);
+      fail(res, 500, "Something went wrong. Please try again.");
+    }
+  });
+
   router.post("/auth/resend", limitResend, async (req, res) => {
     // Allow resending for an expired pending token too (that's the point), but
     // only if its signature is genuine: check signature/type, ignore expiry.

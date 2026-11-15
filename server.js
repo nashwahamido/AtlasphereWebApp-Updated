@@ -145,6 +145,8 @@ const invites = require("./services/invites")(connection);
 const push = require("./services/push");
 push.init(connection);
 app.set("invites", invites);
+const googleAuth = require("./services/googleAuth")(connection, { images });
+app.set("googleAuth", googleAuth);
 
 // After signing in (or verifying), go to the trip someone invited them to,
 // if any; otherwise to their trips, or the welcome page if they have none.
@@ -189,6 +191,7 @@ app.use(sessionMiddleware);
 // The trip someone was invited to, so sign-up and login can say so.
 app.use(function (req, res, next) {
   res.locals.pendingInviteTrip = (req.session && req.session.pendingInviteTrip) || null;
+  res.locals.googleEnabled = googleAuth.configured();
   next();
 });
 console.log("Stats page: " + (require("./routes/admin").adminEmails().length + " admin address(es) in ADMIN_EMAILS"));
@@ -209,6 +212,7 @@ var limits = {
   forgotIp: security.createLimiter({ name: "forgot-ip", windowMs: 60 * 60 * 1000, max: 10, onLimit: tooManyPage("forgot-password") }),
   forgotEmail: security.createLimiter({ name: "forgot-email", windowMs: 60 * 60 * 1000, max: 3, key: emailKey("email"), onLimit: tooManyPage("forgot-password") }),
   resend: security.createLimiter({ name: "resend", windowMs: 60 * 60 * 1000, max: 6 }),
+  google: security.createLimiter({ name: "google", windowMs: 15 * 60 * 1000, max: 30 }),
   inviteEmail: security.createLimiter({ name: "invite-email", windowMs: 60 * 60 * 1000, max: 20, key: function (req) { return req.session.user ? String(req.session.user.id) : req.ip; } }),
 };
 app.set("limits", limits);
@@ -384,6 +388,53 @@ app.post("/auth/login", limits.loginIp, limits.loginAccount, validationLoginRule
       });
     }
   );
+});
+
+// ── SIGN IN WITH GOOGLE ──────────────────────────────────────────────────
+// Website: /auth/google → Google → /auth/google/callback → signed in.
+// App: /auth/google?app=1&redirect=atlasphere://...&challenge=... → Google →
+// callback → back to the app with a one-time code it swaps for a token.
+const googleCallback = (req) => siteBase(req) + "/auth/google/callback";
+
+app.get("/auth/google", limits.google, (req, res) => {
+  if (!googleAuth.configured()) return res.redirect("/auth/login");
+  let flow = { app: false };
+  if (req.query.app === "1") {
+    const redirect = String(req.query.redirect || "");
+    const challenge = String(req.query.challenge || "");
+    if (!googleAuth.appRedirectAllowed(redirect) || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) {
+      return res.status(400).render("error", { status: 400, message: "This sign-in link isn't valid. Please try again from the app.", user: null });
+    }
+    flow = { app: true, redirect, challenge };
+  }
+  res.redirect(googleAuth.startUrl(googleCallback(req), flow));
+});
+
+app.get("/auth/google/callback", limits.google, async (req, res) => {
+  const flow = googleAuth.takeFlow(req.query.state);
+  const backToApp = (params) => res.redirect(flow.redirect + (flow.redirect.includes("?") ? "&" : "?") + new URLSearchParams(params).toString());
+  const webError = (message) => res.status(400).render("login", { title: "Sign In", error: message, user: null });
+  if (!flow) return webError("That Google sign-in took too long or was already used. Please try again.");
+  if (req.query.error || !req.query.code) return flow.app ? backToApp({ error: "cancelled" }) : res.redirect("/auth/login");
+  try {
+    const profile = await googleAuth.profileFromCode(req.query.code, googleCallback(req));
+    const { user, isNew } = await googleAuth.accountFor(profile);
+    console.log("Google sign-in:", user.IDuser, isNew ? "(new account)" : "", flow.app ? "(app)" : "(web)");
+    if (flow.app) return backToApp({ code: googleAuth.issueAppCode(user.IDuser, flow.challenge, isNew) });
+
+    const pendingInvite = req.session.pendingInvite;
+    const pendingInviteTrip = req.session.pendingInviteTrip;
+    req.session.regenerate((err) => {
+      if (err) return webError("Session error. Please try again.");
+      if (pendingInvite) { req.session.pendingInvite = pendingInvite; req.session.pendingInviteTrip = pendingInviteTrip; }
+      req.session.user = { id: user.IDuser, username: user.username, email: user.email, profilePictureUrl: user.profilePictureUrl || "" };
+      landingAfterSignIn(req, req.session.user).then((to) => req.session.save(() => res.redirect(to)));
+    });
+  } catch (err) {
+    console.error("Google sign-in failed:", err.response ? JSON.stringify(err.response.data).slice(0, 200) : err.message);
+    if (flow.app) return backToApp({ error: "failed" });
+    webError("Google sign-in didn't work. Please try again, or sign in with your email.");
+  }
 });
 
 // ── REGISTER ─────────────────────────────────────────────────────────────
@@ -1890,6 +1941,10 @@ server.listen(PORT, '0.0.0.0', function() {
       else { console.log("Ensured tbl_itinerary_comments table exists"); }
     }
   );
+
+  googleAuth.ensureTable()
+    .then(function() { console.log("Google sign-in " + (googleAuth.configured() ? "ready" : "not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)")); })
+    .catch(function(err) { console.error("Migration note (user_oauth):", err.message); });
 
   push.ensureTable()
     .then(function() { push.startNotificationPoller(8000); console.log("Push notifications ready"); })

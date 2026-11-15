@@ -1553,3 +1553,10 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   .admin-cols { grid-template-columns: minmax(0,1fr); gap: 0; }
   .admin-hero__num { font-size: 2.6rem; }
 }
+
+/* ===== SIGN IN WITH GOOGLE ===== */
+.google-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px 16px; border-radius: 30px; background: #FFFFFF; color: #1F1F1F; border: 1px solid #DADCE0; font-family: inherit; font-weight: 600; font-size: 15px; text-decoration: none; box-sizing: border-box; transition: background 0.2s, box-shadow 0.2s; }
+.google-btn:hover { background: #F7F8F8; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+.google-btn:focus-visible { outline: 3px solid #E8933A; outline-offset: 2px; }
+.auth-or { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: rgba(255,255,255,0.75); font-size: 13px; }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.3); }
